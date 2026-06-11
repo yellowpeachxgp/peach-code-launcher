@@ -1,6 +1,6 @@
 # Peach Code Launcher
 
-One-click installer for Peach Code users. It installs Claude Code CLI and Codex CLI, writes Peach Code as the default gateway/provider, then asks the user to paste a Peach Code API key in the terminal.
+One-click installer for Peach Code users. Users copy one command, the script installs Claude Code CLI and Codex CLI through their official installers, writes Peach Code as the default gateway/provider, then installs a global `peach-code` terminal menu.
 
 ## What It Configures
 
@@ -15,6 +15,8 @@ The installer writes:
 - Codex user config: `~/.codex/config.toml`
 - Peach Code API key: `~/.peach-code/api_key`
 - Terminal manager: `peach-code`
+
+On macOS/Linux, the installer places a `peach-code` command shim in `/usr/local/bin` when possible, then falls back to `~/.local/bin` and updates the user's shell profile. On Windows, it installs `peach-code.cmd` under `~/.peach-code/bin` and adds that directory to the user PATH.
 
 Codex is configured as an explicit provider:
 
@@ -63,11 +65,14 @@ Users will be prompted to:
 2. Open `https://cli.rhinelab.com.cn/keys`.
 3. Paste their Peach Code API key.
 
+After that, users can run `peach-code` from any working directory to open the management menu.
+
 ## Management Command
 
 After installation, users can run:
 
 ```bash
+peach-code
 peach-code auth
 peach-code endpoint
 peach-code doctor
@@ -76,6 +81,7 @@ peach-code update
 
 Commands:
 
+- `peach-code`: open the interactive management menu.
 - `peach-code auth`: enter or replace the local API key.
 - `peach-code endpoint`: switch between main and CMIN2 direct endpoints.
 - `peach-code doctor`: inspect CLI, config, endpoint, and key status without printing the key.

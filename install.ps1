@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.1.0"
+$PeachCodeVersion = "0.2.0"
 $BrandName = "Peach Code"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
@@ -69,7 +69,7 @@ function Write-Manager {
   $managerContent = @'
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.1.0"
+$PeachCodeVersion = "0.2.0"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
 $SpeedEndpoint = "https://cli-speed.rhinelab.com.cn"
@@ -371,6 +371,7 @@ function Show-Help {
 Peach Code manager $PeachCodeVersion
 
 Usage:
+  peach-code                      打开管理菜单
   peach-code auth                 输入或更新 Peach Code API Key
   peach-code endpoint             交互式切换主线路 / CMIN2 直连线路
   peach-code endpoint primary     切换到主线路
@@ -383,10 +384,46 @@ Usage:
 "@
 }
 
-$cmd = if ($args.Count -gt 0) { $args[0] } else { "help" }
+function Show-Menu {
+  while ($true) {
+    Write-Host ""
+    Write-Host "Peach Code 管理菜单"
+    Write-Host "当前线路：$(Get-CurrentEndpoint)"
+    Write-Host ""
+    Write-Host "  1) 输入或更新 API Key"
+    Write-Host "  2) 切换线路"
+    Write-Host "  3) 检查安装状态"
+    Write-Host "  4) 检测并获取新版本脚本"
+    Write-Host "  5) 验证 Claude/Codex 命令"
+    Write-Host "  6) 显示命令帮助"
+    Write-Host "  0) 退出"
+    Write-Host ""
+    $choice = Read-Host "请选择 [0-6]"
+
+    switch ($choice) {
+      "1" { Set-PeachAuth }
+      "2" { Set-PeachEndpoint }
+      "3" { Invoke-PeachDoctor }
+      "4" { Update-Peach }
+      "5" {
+        foreach ($cmdName in @("claude", "codex")) {
+          $found = Get-Command $cmdName -ErrorAction SilentlyContinue
+          if ($found) { & $cmdName --version } else { Write-Warn "$cmdName 还不在 PATH 中。请重新打开终端，或确认安装输出。" }
+        }
+      }
+      "6" { Show-Help }
+      "0" { return }
+      "q" { return }
+      default { Write-Warn "无法识别的选择：$choice" }
+    }
+  }
+}
+
+$cmd = if ($args.Count -gt 0) { $args[0] } else { "menu" }
 $rest = if ($args.Count -gt 1) { $args[1..($args.Count - 1)] } else { @() }
 
 switch ($cmd) {
+  "menu" { Show-Menu }
   "auth" { Set-PeachAuth }
   "endpoint" { Set-PeachEndpoint @rest }
   "configure" {
@@ -490,6 +527,7 @@ Write-Host ""
 Write-Host "Peach Code 已配置完成。"
 Write-Host ""
 Write-Host "后续可直接在 terminal 运行："
+Write-Host "  peach-code                   # 打开管理菜单"
 Write-Host "  peach-code auth              # 更新 API Key"
 Write-Host "  peach-code endpoint          # 切换线路"
 Write-Host "  peach-code doctor            # 检查安装状态"

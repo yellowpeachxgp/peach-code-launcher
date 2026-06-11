@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PEACH_CODE_VERSION="0.1.0"
+PEACH_CODE_VERSION="0.2.0"
 BRAND_NAME="Peach Code"
 PROVIDER_ID="peach"
 PRIMARY_ENDPOINT="https://cli.rhinelab.com.cn"
@@ -12,11 +12,14 @@ DEFAULT_INSTALL_URL="${PEACH_CODE_INSTALL_URL:-https://raw.githubusercontent.com
 STATE_DIR="${PEACH_CODE_HOME:-$HOME/.peach-code}"
 BIN_DIR="$STATE_DIR/bin"
 LOCAL_BIN="${PEACH_CODE_LOCAL_BIN:-$HOME/.local/bin}"
+SYSTEM_BIN="${PEACH_CODE_SYSTEM_BIN:-/usr/local/bin}"
+COMMAND_DIR="${PEACH_CODE_COMMAND_DIR:-}"
 API_KEY_FILE="$STATE_DIR/api_key"
 ENDPOINT_FILE="$STATE_DIR/endpoint"
 INSTALL_URL_FILE="$STATE_DIR/install_url"
 HELPER="$BIN_DIR/peach-api-key"
 MANAGER="$BIN_DIR/peach-code"
+INSTALLED_COMMAND_DIR=""
 
 usage() {
   cat <<USAGE
@@ -28,6 +31,7 @@ Usage:
 Environment overrides:
   PEACH_CODE_ENDPOINT       Use a custom endpoint instead of prompting.
   PEACH_CODE_INSTALL_URL    URL used by 'peach-code update'.
+  PEACH_CODE_COMMAND_DIR    Directory where the peach-code command shim is installed.
   PEACH_CODE_SKIP_AUTH=1    Do not prompt for an API key.
   PEACH_CODE_DRY_RUN=1      Skip official CLI installers for local testing.
 USAGE
@@ -86,7 +90,7 @@ write_manager() {
 #!/usr/bin/env bash
 set -euo pipefail
 
-PEACH_CODE_VERSION="0.1.0"
+PEACH_CODE_VERSION="0.2.0"
 BRAND_NAME="Peach Code"
 PROVIDER_ID="peach"
 PRIMARY_ENDPOINT="https://cli.rhinelab.com.cn"
@@ -437,6 +441,7 @@ help_text() {
 Peach Code manager ${PEACH_CODE_VERSION}
 
 Usage:
+  peach-code                      打开管理菜单
   peach-code auth                 输入或更新 Peach Code API Key
   peach-code endpoint             交互式切换主线路 / CMIN2 直连线路
   peach-code endpoint primary     切换到主线路
@@ -449,11 +454,44 @@ Usage:
 HELP
 }
 
+interactive_menu() {
+  if [ ! -t 0 ]; then
+    help_text
+    return
+  fi
+
+  while true; do
+    printf '\nPeach Code 管理菜单\n'
+    printf '当前线路：%s\n\n' "$(current_endpoint)"
+    printf '  1) 输入或更新 API Key\n'
+    printf '  2) 切换线路\n'
+    printf '  3) 检查安装状态\n'
+    printf '  4) 检测并获取新版本脚本\n'
+    printf '  5) 验证 Claude/Codex 命令\n'
+    printf '  6) 显示命令帮助\n'
+    printf '  0) 退出\n\n'
+    printf '请选择 [0-6]: '
+    read -r choice || choice=""
+
+    case "$choice" in
+      1) auth ;;
+      2) endpoint ;;
+      3) doctor ;;
+      4) update_manager ;;
+      5) verify ;;
+      6) help_text ;;
+      0 | q | quit | exit) return ;;
+      *) warn "无法识别的选择：$choice" ;;
+    esac
+  done
+}
+
 main() {
-  cmd="${1:-help}"
+  cmd="${1:-menu}"
   shift || true
 
   case "$cmd" in
+    menu) interactive_menu ;;
     auth) auth "$@" ;;
     endpoint) endpoint "$@" ;;
     configure) configure "$@" ;;
@@ -481,7 +519,64 @@ EOF
   fi
 }
 
+write_peach_code_wrapper() {
+  target_dir="$1"
+  mkdir -p "$target_dir"
+  cat >"$target_dir/peach-code" <<EOF
+#!/usr/bin/env sh
+exec "$MANAGER" "\$@"
+EOF
+  chmod 755 "$target_dir/peach-code"
+}
+
+install_command_shim() {
+  if [ -n "$COMMAND_DIR" ]; then
+    write_peach_code_wrapper "$COMMAND_DIR"
+    INSTALLED_COMMAND_DIR="$COMMAND_DIR"
+    log "已安装全局命令：$COMMAND_DIR/peach-code"
+    return
+  fi
+
+  if [ "${PEACH_CODE_DRY_RUN:-}" = "1" ]; then
+    write_peach_code_wrapper "$LOCAL_BIN"
+    INSTALLED_COMMAND_DIR="$LOCAL_BIN"
+    log "DRY RUN: 已安装命令 shim：$LOCAL_BIN/peach-code"
+    return
+  fi
+
+  if [ -d "$SYSTEM_BIN" ] && [ -w "$SYSTEM_BIN" ]; then
+    write_peach_code_wrapper "$SYSTEM_BIN"
+    INSTALLED_COMMAND_DIR="$SYSTEM_BIN"
+    log "已安装全局命令：$SYSTEM_BIN/peach-code"
+    return
+  fi
+
+  if command -v sudo >/dev/null 2>&1 && [ -t 0 ]; then
+    tmp_wrapper="$(mktemp "${TMPDIR:-/tmp}/peach-code-wrapper.XXXXXX")"
+    cat >"$tmp_wrapper" <<EOF
+#!/usr/bin/env sh
+exec "$MANAGER" "\$@"
+EOF
+    chmod 755 "$tmp_wrapper"
+    log "需要管理员权限把 peach-code 安装到 $SYSTEM_BIN。"
+    if sudo mkdir -p "$SYSTEM_BIN" && sudo install -m 755 "$tmp_wrapper" "$SYSTEM_BIN/peach-code"; then
+      rm -f "$tmp_wrapper"
+      INSTALLED_COMMAND_DIR="$SYSTEM_BIN"
+      log "已安装全局命令：$SYSTEM_BIN/peach-code"
+      return
+    fi
+    rm -f "$tmp_wrapper"
+    warn "无法写入 $SYSTEM_BIN，回退到用户目录。"
+  fi
+
+  write_peach_code_wrapper "$LOCAL_BIN"
+  INSTALLED_COMMAND_DIR="$LOCAL_BIN"
+  log "已安装用户命令：$LOCAL_BIN/peach-code"
+}
+
 setup_shell_path() {
+  [ "$INSTALLED_COMMAND_DIR" = "$LOCAL_BIN" ] || return 0
+
   case ":$PATH:" in
     *":$LOCAL_BIN:"*) return ;;
   esac
@@ -574,6 +669,7 @@ main() {
 
   install_clis
   write_manager
+  install_command_shim
   setup_shell_path
 
   log "先写入 Peach Code 中转站配置..."
@@ -586,15 +682,23 @@ main() {
 
 Peach Code 已配置完成。
 
+命令入口：
+  $INSTALLED_COMMAND_DIR/peach-code
+
 后续可直接在 terminal 运行：
+  peach-code                   # 打开管理菜单
   peach-code auth              # 更新 API Key
   peach-code endpoint          # 切换线路
   peach-code doctor            # 检查安装状态
   peach-code update            # 检测并获取新版本脚本
-
-如果 peach-code 命令暂时不可用，请重新打开终端，或运行：
-  export PATH="$LOCAL_BIN:\$PATH"
 DONE
+
+  if [ "$INSTALLED_COMMAND_DIR" = "$LOCAL_BIN" ]; then
+    cat <<DONE
+如果 peach-code 命令暂时不可用，请重新打开终端，或运行：
+  export PATH="$INSTALLED_COMMAND_DIR:\$PATH"
+DONE
+  fi
 }
 
 main "$@"

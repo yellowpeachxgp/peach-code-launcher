@@ -2,7 +2,9 @@
 
 ## `peach-code` Command Not Found
 
-Close and reopen the terminal. The installer adds the Peach Code bin directory to the shell profile or user PATH.
+Close and reopen the terminal.
+
+On macOS/Linux, the installer first tries to install `peach-code` into `/usr/local/bin`. If it cannot write there, it installs into `~/.local/bin` and updates the shell profile. On Windows, it adds `~/.peach-code\bin` to the user PATH.
 
 macOS/Linux temporary fix:
 
