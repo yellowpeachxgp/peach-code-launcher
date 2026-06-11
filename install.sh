@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PEACH_CODE_VERSION="0.2.0"
+PEACH_CODE_VERSION="0.3.0"
 BRAND_NAME="Peach Code"
 PROVIDER_ID="peach"
 PRIMARY_ENDPOINT="https://cli.rhinelab.com.cn"
@@ -32,6 +32,7 @@ Environment overrides:
   PEACH_CODE_ENDPOINT       Use a custom endpoint instead of prompting.
   PEACH_CODE_INSTALL_URL    URL used by 'peach-code update'.
   PEACH_CODE_COMMAND_DIR    Directory where the peach-code command shim is installed.
+  PEACH_CODE_NO_BROWSER=1   Do not open the API key page automatically.
   PEACH_CODE_SKIP_AUTH=1    Do not prompt for an API key.
   PEACH_CODE_DRY_RUN=1      Skip official CLI installers for local testing.
 USAGE
@@ -90,7 +91,7 @@ write_manager() {
 #!/usr/bin/env bash
 set -euo pipefail
 
-PEACH_CODE_VERSION="0.2.0"
+PEACH_CODE_VERSION="0.3.0"
 BRAND_NAME="Peach Code"
 PROVIDER_ID="peach"
 PRIMARY_ENDPOINT="https://cli.rhinelab.com.cn"
@@ -315,9 +316,55 @@ configure() {
   printf 'Codex:  %s\n' "${CODEX_HOME:-$HOME/.codex}/config.toml"
 }
 
+open_key_page() {
+  if [ "${PEACH_CODE_NO_BROWSER:-}" = "1" ]; then
+    warn "已按 PEACH_CODE_NO_BROWSER=1 跳过自动打开浏览器。"
+    return 0
+  fi
+
+  if [ ! -t 0 ]; then
+    return 0
+  fi
+
+  os_name="$(uname -s 2>/dev/null || printf unknown)"
+
+  case "$os_name" in
+    Darwin)
+      if command -v open >/dev/null 2>&1; then
+        open "$KEY_URL" >/dev/null 2>&1 || true
+        log "已尝试打开浏览器：$KEY_URL"
+        return 0
+      fi
+      ;;
+    Linux)
+      if grep -qi microsoft /proc/version 2>/dev/null && command -v wslview >/dev/null 2>&1; then
+        wslview "$KEY_URL" >/dev/null 2>&1 || true
+        log "已尝试打开浏览器：$KEY_URL"
+        return 0
+      fi
+      if command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$KEY_URL" >/dev/null 2>&1 || true
+        log "已尝试打开浏览器：$KEY_URL"
+        return 0
+      fi
+      ;;
+    CYGWIN* | MINGW* | MSYS*)
+      if command -v cmd.exe >/dev/null 2>&1; then
+        cmd.exe /c start "" "$KEY_URL" >/dev/null 2>&1 || true
+        log "已尝试打开浏览器：$KEY_URL"
+        return 0
+      fi
+      ;;
+  esac
+
+  warn "未找到可用的浏览器打开命令，请手动复制链接。"
+}
+
 auth() {
   mkdir -p "$STATE_DIR"
-  printf '\n请打开 Peach Code 获取 API Key：\n%s\n\n' "$KEY_URL"
+  printf '\n正在打开 Peach Code API Key 页面...\n'
+  open_key_page
+  printf '\n如果浏览器没有自动打开，请手动复制这个链接：\n%s\n\n' "$KEY_URL"
   printf '请粘贴 API Key：'
 
   if [ -t 0 ]; then
@@ -442,6 +489,7 @@ Peach Code manager ${PEACH_CODE_VERSION}
 
 Usage:
   peach-code                      打开管理菜单
+  peach-code keys                 打开 Peach Code API Key 页面
   peach-code auth                 输入或更新 Peach Code API Key
   peach-code endpoint             交互式切换主线路 / CMIN2 直连线路
   peach-code endpoint primary     切换到主线路
@@ -463,23 +511,25 @@ interactive_menu() {
   while true; do
     printf '\nPeach Code 管理菜单\n'
     printf '当前线路：%s\n\n' "$(current_endpoint)"
-    printf '  1) 输入或更新 API Key\n'
-    printf '  2) 切换线路\n'
-    printf '  3) 检查安装状态\n'
-    printf '  4) 检测并获取新版本脚本\n'
-    printf '  5) 验证 Claude/Codex 命令\n'
-    printf '  6) 显示命令帮助\n'
+    printf '  1) 打开 API Key 页面\n'
+    printf '  2) 输入或更新 API Key\n'
+    printf '  3) 切换线路\n'
+    printf '  4) 检查安装状态\n'
+    printf '  5) 检测并获取新版本脚本\n'
+    printf '  6) 验证 Claude/Codex 命令\n'
+    printf '  7) 显示命令帮助\n'
     printf '  0) 退出\n\n'
-    printf '请选择 [0-6]: '
+    printf '请选择 [0-7]: '
     read -r choice || choice=""
 
     case "$choice" in
-      1) auth ;;
-      2) endpoint ;;
-      3) doctor ;;
-      4) update_manager ;;
-      5) verify ;;
-      6) help_text ;;
+      1) open_key_page; printf 'API Key 页面：%s\n' "$KEY_URL" ;;
+      2) auth ;;
+      3) endpoint ;;
+      4) doctor ;;
+      5) update_manager ;;
+      6) verify ;;
+      7) help_text ;;
       0 | q | quit | exit) return ;;
       *) warn "无法识别的选择：$choice" ;;
     esac
@@ -492,6 +542,7 @@ main() {
 
   case "$cmd" in
     menu) interactive_menu ;;
+    keys) open_key_page; printf 'API Key 页面：%s\n' "$KEY_URL" ;;
     auth) auth "$@" ;;
     endpoint) endpoint "$@" ;;
     configure) configure "$@" ;;
@@ -687,6 +738,7 @@ Peach Code 已配置完成。
 
 后续可直接在 terminal 运行：
   peach-code                   # 打开管理菜单
+  peach-code keys              # 打开 API Key 页面
   peach-code auth              # 更新 API Key
   peach-code endpoint          # 切换线路
   peach-code doctor            # 检查安装状态

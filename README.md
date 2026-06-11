@@ -62,8 +62,8 @@ irm https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/in
 Users will be prompted to:
 
 1. Choose the main or CMIN2 direct endpoint.
-2. Open `https://cli.rhinelab.com.cn/keys`.
-3. Paste their Peach Code API key.
+2. Let the installer open `https://cli.rhinelab.com.cn/keys` in the browser.
+3. Paste their Peach Code API key back into the terminal.
 
 After that, users can run `peach-code` from any working directory to open the management menu.
 
@@ -73,6 +73,7 @@ After installation, users can run:
 
 ```bash
 peach-code
+peach-code keys
 peach-code auth
 peach-code endpoint
 peach-code doctor
@@ -82,6 +83,7 @@ peach-code update
 Commands:
 
 - `peach-code`: open the interactive management menu.
+- `peach-code keys`: open the Peach Code API key page in the default browser.
 - `peach-code auth`: enter or replace the local API key.
 - `peach-code endpoint`: switch between main and CMIN2 direct endpoints.
 - `peach-code doctor`: inspect CLI, config, endpoint, and key status without printing the key.
@@ -109,3 +111,4 @@ HOME="$tmp_home" "$tmp_home/.peach-code/bin/peach-code" doctor
 - Existing Claude/Codex config files are backed up before edits.
 - Existing Codex config is preserved where possible, but the top-level `model_provider` is changed to `peach` by design.
 - If users need to rotate keys, tell them to run `peach-code auth`.
+- If users are on SSH, CI, or a browserless machine, set `PEACH_CODE_NO_BROWSER=1` to skip automatic browser opening.

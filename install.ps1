@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.2.0"
+$PeachCodeVersion = "0.3.0"
 $BrandName = "Peach Code"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
@@ -69,7 +69,7 @@ function Write-Manager {
   $managerContent = @'
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.2.0"
+$PeachCodeVersion = "0.3.0"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
 $SpeedEndpoint = "https://cli-speed.rhinelab.com.cn"
@@ -263,10 +263,27 @@ function Configure-Peach {
   Write-Info "已写入 Peach Code 配置：$Endpoint"
 }
 
+function Open-KeyPage {
+  if ($env:PEACH_CODE_NO_BROWSER -eq "1") {
+    Write-Warn "已按 PEACH_CODE_NO_BROWSER=1 跳过自动打开浏览器。"
+    return
+  }
+
+  try {
+    Start-Process $KeyUrl | Out-Null
+    Write-Info "已尝试打开浏览器：$KeyUrl"
+  } catch {
+    Write-Warn "未能自动打开浏览器，请手动复制链接。"
+  }
+}
+
 function Set-PeachAuth {
   New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
   Write-Host ""
-  Write-Host "请打开 Peach Code 获取 API Key："
+  Write-Host "正在打开 Peach Code API Key 页面..."
+  Open-KeyPage
+  Write-Host ""
+  Write-Host "如果浏览器没有自动打开，请手动复制这个链接："
   Write-Host $KeyUrl
   Write-Host ""
   $secure = Read-Host "请粘贴 API Key" -AsSecureString
@@ -372,6 +389,7 @@ Peach Code manager $PeachCodeVersion
 
 Usage:
   peach-code                      打开管理菜单
+  peach-code keys                 打开 Peach Code API Key 页面
   peach-code auth                 输入或更新 Peach Code API Key
   peach-code endpoint             交互式切换主线路 / CMIN2 直连线路
   peach-code endpoint primary     切换到主线路
@@ -390,28 +408,30 @@ function Show-Menu {
     Write-Host "Peach Code 管理菜单"
     Write-Host "当前线路：$(Get-CurrentEndpoint)"
     Write-Host ""
-    Write-Host "  1) 输入或更新 API Key"
-    Write-Host "  2) 切换线路"
-    Write-Host "  3) 检查安装状态"
-    Write-Host "  4) 检测并获取新版本脚本"
-    Write-Host "  5) 验证 Claude/Codex 命令"
-    Write-Host "  6) 显示命令帮助"
+    Write-Host "  1) 打开 API Key 页面"
+    Write-Host "  2) 输入或更新 API Key"
+    Write-Host "  3) 切换线路"
+    Write-Host "  4) 检查安装状态"
+    Write-Host "  5) 检测并获取新版本脚本"
+    Write-Host "  6) 验证 Claude/Codex 命令"
+    Write-Host "  7) 显示命令帮助"
     Write-Host "  0) 退出"
     Write-Host ""
-    $choice = Read-Host "请选择 [0-6]"
+    $choice = Read-Host "请选择 [0-7]"
 
     switch ($choice) {
-      "1" { Set-PeachAuth }
-      "2" { Set-PeachEndpoint }
-      "3" { Invoke-PeachDoctor }
-      "4" { Update-Peach }
-      "5" {
+      "1" { Open-KeyPage; Write-Host "API Key 页面：$KeyUrl" }
+      "2" { Set-PeachAuth }
+      "3" { Set-PeachEndpoint }
+      "4" { Invoke-PeachDoctor }
+      "5" { Update-Peach }
+      "6" {
         foreach ($cmdName in @("claude", "codex")) {
           $found = Get-Command $cmdName -ErrorAction SilentlyContinue
           if ($found) { & $cmdName --version } else { Write-Warn "$cmdName 还不在 PATH 中。请重新打开终端，或确认安装输出。" }
         }
       }
-      "6" { Show-Help }
+      "7" { Show-Help }
       "0" { return }
       "q" { return }
       default { Write-Warn "无法识别的选择：$choice" }
@@ -424,6 +444,7 @@ $rest = if ($args.Count -gt 1) { $args[1..($args.Count - 1)] } else { @() }
 
 switch ($cmd) {
   "menu" { Show-Menu }
+  "keys" { Open-KeyPage; Write-Host "API Key 页面：$KeyUrl" }
   "auth" { Set-PeachAuth }
   "endpoint" { Set-PeachEndpoint @rest }
   "configure" {
@@ -500,6 +521,7 @@ Peach Code installer $PeachCodeVersion
 Environment overrides:
   PEACH_CODE_ENDPOINT       Use a custom endpoint instead of prompting.
   PEACH_CODE_INSTALL_URL    URL used by 'peach-code update'.
+  PEACH_CODE_NO_BROWSER=1   Do not open the API key page automatically.
   PEACH_CODE_SKIP_AUTH=1    Do not prompt for an API key.
   PEACH_CODE_DRY_RUN=1      Skip official CLI installers for local testing.
 "@
@@ -528,6 +550,7 @@ Write-Host "Peach Code 已配置完成。"
 Write-Host ""
 Write-Host "后续可直接在 terminal 运行："
 Write-Host "  peach-code                   # 打开管理菜单"
+Write-Host "  peach-code keys              # 打开 API Key 页面"
 Write-Host "  peach-code auth              # 更新 API Key"
 Write-Host "  peach-code endpoint          # 切换线路"
 Write-Host "  peach-code doctor            # 检查安装状态"

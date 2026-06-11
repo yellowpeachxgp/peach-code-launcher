@@ -41,10 +41,18 @@ Run:
 peach-code auth
 ```
 
+The command tries to open the key page in the default browser. If the browser does not open automatically, copy the printed URL manually.
+
 The key page is:
 
 ```text
 https://cli.rhinelab.com.cn/keys
+```
+
+For SSH, CI, or browserless environments:
+
+```bash
+PEACH_CODE_NO_BROWSER=1 peach-code auth
 ```
 
 ## Check The Installation
