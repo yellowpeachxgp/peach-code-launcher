@@ -1,6 +1,6 @@
 # Peach Code Launcher
 
-One-click installer for Peach Code users. Users copy one command, the script checks Node.js 18+ and npm, installs Claude Code CLI and Codex CLI through their official installers, writes Peach Code as the default gateway/provider, then installs a global `peach-code` terminal menu.
+One-click installer for Peach Code users. Users copy one command, the script installs or refreshes the global `peach-code` terminal menu, writes Peach Code as the default gateway/provider, and installs Claude Code CLI / Codex CLI only when they are missing.
 
 ## What It Configures
 
@@ -18,7 +18,7 @@ The installer writes:
 
 On macOS/Linux, the installer places a `peach-code` command shim in `/usr/local/bin` when possible, then falls back to `~/.local/bin` and updates the user's shell profile. On Windows, it installs `peach-code.cmd` under `~/.peach-code/bin` and adds that directory to the user PATH.
 
-The installer also verifies Node.js 18+ and npm before installing the CLIs. If the machine does not already have a usable Node.js, it first tries Peach Code's mirrored portable Node.js runtime from this repository's GitHub Releases, then falls back to system package managers:
+When both `claude` and `codex` are already installed, the installer skips Node.js/npm checks and official CLI installers, then only refreshes `peach-code` and Peach Code config. If either CLI is missing, the installer verifies Node.js 18+ and npm first. If the machine does not already have a usable Node.js, it first tries Peach Code's mirrored portable Node.js runtime from this repository's GitHub Releases, then falls back to system package managers:
 
 - macOS/Linux: existing Node.js 18+ and npm, existing Peach Code runtime, GitHub Release runtime, Homebrew/apt/dnf/yum/pacman/apk/zypper, then nvm fallback.
 - Windows: existing Node.js 18+ and npm, existing Peach Code runtime, GitHub Release runtime, winget, Chocolatey, then Scoop.

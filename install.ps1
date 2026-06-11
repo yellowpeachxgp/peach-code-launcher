@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.5.0"
+$PeachCodeVersion = "0.5.1"
 $BrandName = "Peach Code"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
@@ -236,13 +236,25 @@ function Ensure-NodeRuntime {
   throw "未能自动安装 Node.js 18+ 和 npm。请安装 Node.js LTS 后重新运行安装命令：https://nodejs.org/"
 }
 
+function Test-ClaudeCliInstalled {
+  return [bool](Get-Command claude -ErrorAction SilentlyContinue)
+}
+
+function Test-CodexCliInstalled {
+  return [bool](Get-Command codex -ErrorAction SilentlyContinue)
+}
+
+function Test-OfficialClisInstalled {
+  return (Test-ClaudeCliInstalled) -and (Test-CodexCliInstalled)
+}
+
 function Write-Manager {
   New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 
   $managerContent = @'
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.5.0"
+$PeachCodeVersion = "0.5.1"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
 $SpeedEndpoint = "https://cli-speed.rhinelab.com.cn"
@@ -652,17 +664,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$Manager" %*
 }
 
 function Install-OfficialClis {
+  if (Test-OfficialClisInstalled) {
+    Write-Info "已检测到 Claude Code CLI 和 Codex CLI，跳过官方 CLI 安装器。"
+    return
+  }
+
   if ($env:PEACH_CODE_DRY_RUN -eq "1") {
     Write-Info "DRY RUN: 跳过 Claude Code 和 Codex CLI 官方安装器。"
     return
   }
 
-  Write-Info "正在安装或更新 Claude Code CLI..."
-  Invoke-Expression (Invoke-WebRequest -UseBasicParsing -Uri "https://claude.ai/install.ps1").Content
+  if (Test-ClaudeCliInstalled) {
+    $claudePath = (Get-Command claude).Source
+    Write-Info "已检测到 Claude Code CLI：$claudePath"
+  } else {
+    Write-Info "正在安装 Claude Code CLI..."
+    Invoke-Expression (Invoke-WebRequest -UseBasicParsing -Uri "https://claude.ai/install.ps1").Content
+  }
 
-  Write-Info "正在安装或更新 Codex CLI..."
-  $env:CODEX_NON_INTERACTIVE = "1"
-  Invoke-Expression (Invoke-WebRequest -UseBasicParsing -Uri "https://chatgpt.com/codex/install.ps1").Content
+  if (Test-CodexCliInstalled) {
+    $codexPath = (Get-Command codex).Source
+    Write-Info "已检测到 Codex CLI：$codexPath"
+  } else {
+    Write-Info "正在安装 Codex CLI..."
+    $env:CODEX_NON_INTERACTIVE = "1"
+    Invoke-Expression (Invoke-WebRequest -UseBasicParsing -Uri "https://chatgpt.com/codex/install.ps1").Content
+  }
 }
 
 function Invoke-AuthIfNeeded {
@@ -711,8 +738,13 @@ Write-Info "将使用端点：$Endpoint"
 New-Item -ItemType Directory -Force -Path $StateDir, $BinDir | Out-Null
 $DefaultInstallUrl | Set-Content -Encoding ASCII -Path $InstallUrlFile
 
-Ensure-NodeRuntime
-Install-OfficialClis
+if (Test-OfficialClisInstalled) {
+  Write-Info "已检测到 Claude Code CLI 和 Codex CLI，仅安装/刷新 peach-code 管理脚本。"
+} else {
+  Ensure-NodeRuntime
+  Install-OfficialClis
+}
+
 Write-Manager
 Add-BinToUserPath
 Add-NodeRuntimeToUserPath

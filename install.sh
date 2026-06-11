@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PEACH_CODE_VERSION="0.5.0"
+PEACH_CODE_VERSION="0.5.1"
 BRAND_NAME="Peach Code"
 PROVIDER_ID="peach"
 PRIMARY_ENDPOINT="https://cli.rhinelab.com.cn"
@@ -334,6 +334,18 @@ ensure_node_runtime() {
   die "未能自动安装 Node.js 18+ 和 npm。请安装 Node.js LTS 后重新运行安装命令：https://nodejs.org/"
 }
 
+has_claude_cli() {
+  command -v claude >/dev/null 2>&1
+}
+
+has_codex_cli() {
+  command -v codex >/dev/null 2>&1
+}
+
+official_clis_installed() {
+  has_claude_cli && has_codex_cli
+}
+
 write_manager() {
   mkdir -p "$BIN_DIR" "$LOCAL_BIN"
 
@@ -341,7 +353,7 @@ write_manager() {
 #!/usr/bin/env bash
 set -euo pipefail
 
-PEACH_CODE_VERSION="0.5.0"
+PEACH_CODE_VERSION="0.5.1"
 BRAND_NAME="Peach Code"
 PROVIDER_ID="peach"
 PRIMARY_ENDPOINT="https://cli.rhinelab.com.cn"
@@ -958,16 +970,29 @@ export PATH=\"$node_bin:\$PATH\"
 install_clis() {
   need_cmd curl
 
+  if official_clis_installed; then
+    log "已检测到 Claude Code CLI 和 Codex CLI，跳过官方 CLI 安装器。"
+    return
+  fi
+
   if [ "${PEACH_CODE_DRY_RUN:-}" = "1" ]; then
     log "DRY RUN: 跳过 Claude Code 和 Codex CLI 官方安装器。"
     return
   fi
 
-  log "正在安装或更新 Claude Code CLI..."
-  curl -fsSL https://claude.ai/install.sh | bash
+  if has_claude_cli; then
+    log "已检测到 Claude Code CLI：$(command -v claude)"
+  else
+    log "正在安装 Claude Code CLI..."
+    curl -fsSL https://claude.ai/install.sh | bash
+  fi
 
-  log "正在安装或更新 Codex CLI..."
-  curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh
+  if has_codex_cli; then
+    log "已检测到 Codex CLI：$(command -v codex)"
+  else
+    log "正在安装 Codex CLI..."
+    curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh
+  fi
 }
 
 prompt_auth_if_needed() {
@@ -1009,8 +1034,13 @@ main() {
   mkdir -p "$STATE_DIR" "$BIN_DIR" "$LOCAL_BIN"
   printf '%s\n' "$DEFAULT_INSTALL_URL" >"$INSTALL_URL_FILE"
 
-  ensure_node_runtime
-  install_clis
+  if official_clis_installed; then
+    log "已检测到 Claude Code CLI 和 Codex CLI，仅安装/刷新 peach-code 管理脚本。"
+  else
+    ensure_node_runtime
+    install_clis
+  fi
+
   write_manager
   install_command_shim
   setup_shell_path
