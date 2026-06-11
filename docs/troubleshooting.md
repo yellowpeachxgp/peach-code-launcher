@@ -59,6 +59,14 @@ PEACH_CODE_NO_BROWSER=1 peach-code auth
 
 The installer checks for Node.js 18+ and npm before it runs the Claude/Codex official installers.
 
+If Node.js is missing, the installer first tries to download Peach Code's mirrored portable Node.js runtime from GitHub Releases. The runtime is installed under:
+
+```text
+~/.peach-code/runtime/node
+```
+
+On macOS/Linux, the runtime `bin` directory is added to the user's shell profile. On Windows, the runtime directory is added to the user PATH. Close and reopen the terminal after installation if `node`, `claude`, or `codex` cannot be found.
+
 If automatic installation fails, install Node.js LTS manually:
 
 ```text
@@ -76,6 +84,12 @@ Advanced users who already manage Node.js can skip the preflight:
 
 ```bash
 PEACH_CODE_SKIP_NODE=1 curl -fsSL https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.sh | bash
+```
+
+Operators can override the mirrored runtime location:
+
+```bash
+PEACH_CODE_NODE_RUNTIME_BASE_URL=https://example.com/node-runtime curl -fsSL https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.sh | bash
 ```
 
 ## Check The Installation

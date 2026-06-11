@@ -18,10 +18,12 @@ The installer writes:
 
 On macOS/Linux, the installer places a `peach-code` command shim in `/usr/local/bin` when possible, then falls back to `~/.local/bin` and updates the user's shell profile. On Windows, it installs `peach-code.cmd` under `~/.peach-code/bin` and adds that directory to the user PATH.
 
-The installer also verifies Node.js 18+ and npm before installing the CLIs. It tries common package managers first:
+The installer also verifies Node.js 18+ and npm before installing the CLIs. If the machine does not already have a usable Node.js, it first tries Peach Code's mirrored portable Node.js runtime from this repository's GitHub Releases, then falls back to system package managers:
 
-- macOS/Linux: Homebrew, apt, dnf, yum, pacman, apk, zypper, then nvm fallback.
-- Windows: winget, Chocolatey, then Scoop.
+- macOS/Linux: existing Node.js 18+ and npm, existing Peach Code runtime, GitHub Release runtime, Homebrew/apt/dnf/yum/pacman/apk/zypper, then nvm fallback.
+- Windows: existing Node.js 18+ and npm, existing Peach Code runtime, GitHub Release runtime, winget, Chocolatey, then Scoop.
+
+The mirrored runtime is installed under `~/.peach-code/runtime/node`. On macOS/Linux, the installer adds its `bin` directory to the user's shell profile when that runtime is used. On Windows, the installer adds the runtime directory to the user PATH.
 
 Set `PEACH_CODE_SKIP_NODE=1` only when you intentionally want to skip this dependency preflight.
 
@@ -120,3 +122,5 @@ HOME="$tmp_home" "$tmp_home/.peach-code/bin/peach-code" doctor
 - If users need to rotate keys, tell them to run `peach-code auth`.
 - If users are on SSH, CI, or a browserless machine, set `PEACH_CODE_NO_BROWSER=1` to skip automatic browser opening.
 - If users already manage Node.js themselves, they can set `PEACH_CODE_SKIP_NODE=1`, but the default path checks Node/npm for small-user friendliness.
+- If you need to mirror Node.js runtime assets again, run `scripts/mirror-node-runtime.sh`. It downloads official Node.js portable archives, verifies `SHASUMS256.txt`, writes `node-manifest.json`, and uploads the assets to the `node-runtime-v24.16.0` GitHub Release when `gh` is authenticated.
+- To host runtime assets elsewhere, set `PEACH_CODE_NODE_RUNTIME_BASE_URL` to a URL prefix containing the same asset filenames, for example `node-v24.16.0-darwin-arm64.tar.xz`.

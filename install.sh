@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PEACH_CODE_VERSION="0.4.0"
+PEACH_CODE_VERSION="0.5.0"
 BRAND_NAME="Peach Code"
 PROVIDER_ID="peach"
 PRIMARY_ENDPOINT="https://cli.rhinelab.com.cn"
 SPEED_ENDPOINT="https://cli-speed.rhinelab.com.cn"
 KEY_URL="https://cli.rhinelab.com.cn/keys"
 DEFAULT_INSTALL_URL="${PEACH_CODE_INSTALL_URL:-https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.sh}"
+NODE_RUNTIME_VERSION="v24.16.0"
+NODE_RUNTIME_TAG="node-runtime-v24.16.0"
+NODE_RUNTIME_BASE_URL="${PEACH_CODE_NODE_RUNTIME_BASE_URL:-https://github.com/yellowpeachxgp/peach-code-launcher/releases/download/node-runtime-v24.16.0}"
 
 STATE_DIR="${PEACH_CODE_HOME:-$HOME/.peach-code}"
 BIN_DIR="$STATE_DIR/bin"
 LOCAL_BIN="${PEACH_CODE_LOCAL_BIN:-$HOME/.local/bin}"
 SYSTEM_BIN="${PEACH_CODE_SYSTEM_BIN:-/usr/local/bin}"
 COMMAND_DIR="${PEACH_CODE_COMMAND_DIR:-}"
+RUNTIME_DIR="$STATE_DIR/runtime"
+NODE_RUNTIME_DIR="$RUNTIME_DIR/node"
 API_KEY_FILE="$STATE_DIR/api_key"
 ENDPOINT_FILE="$STATE_DIR/endpoint"
 INSTALL_URL_FILE="$STATE_DIR/install_url"
@@ -33,6 +38,8 @@ Environment overrides:
   PEACH_CODE_INSTALL_URL    URL used by 'peach-code update'.
   PEACH_CODE_COMMAND_DIR    Directory where the peach-code command shim is installed.
   PEACH_CODE_NO_BROWSER=1   Do not open the API key page automatically.
+  PEACH_CODE_NODE_RUNTIME_BASE_URL
+                            URL prefix for mirrored Node.js runtime assets.
   PEACH_CODE_SKIP_NODE=1    Skip Node.js/npm dependency checks.
   PEACH_CODE_SKIP_AUTH=1    Do not prompt for an API key.
   PEACH_CODE_DRY_RUN=1      Skip official CLI installers for local testing.
@@ -104,6 +111,114 @@ log_node_runtime() {
   node_version="$(node -v 2>/dev/null || printf missing)"
   npm_version="$(npm -v 2>/dev/null || printf missing)"
   log "Node.js/npm 已就绪：node ${node_version}, npm ${npm_version}"
+}
+
+node_runtime_asset() {
+  os_name="$(uname -s 2>/dev/null || printf unknown)"
+  machine="$(uname -m 2>/dev/null || printf unknown)"
+
+  case "$machine" in
+    x86_64 | amd64) node_arch="x64" ;;
+    arm64 | aarch64) node_arch="arm64" ;;
+    *) return 1 ;;
+  esac
+
+  case "$os_name" in
+    Darwin) node_platform="darwin" ;;
+    Linux) node_platform="linux" ;;
+    *) return 1 ;;
+  esac
+
+  printf 'node-%s-%s-%s.tar.xz\n' "$NODE_RUNTIME_VERSION" "$node_platform" "$node_arch"
+}
+
+node_runtime_sha256() {
+  case "$1" in
+    node-v24.16.0-darwin-arm64.tar.xz) printf '%s\n' 'e28ad5531b2aafe0ea555a51b2412c42fdc0f91a6a53fbd03ac93e3847e91389' ;;
+    node-v24.16.0-darwin-x64.tar.xz) printf '%s\n' '6b144acbcfdbca75a1366100ff96e6bf6a4fe666b88a4bda7bfbd0299c82cca2' ;;
+    node-v24.16.0-linux-arm64.tar.xz) printf '%s\n' '524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78' ;;
+    node-v24.16.0-linux-x64.tar.xz) printf '%s\n' 'd804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9' ;;
+    *) return 1 ;;
+  esac
+}
+
+sha256_file() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+    return
+  fi
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+    return
+  fi
+
+  return 1
+}
+
+curl_download() {
+  url="$1"
+  output="$2"
+  if curl --help all 2>/dev/null | grep -q -- '--retry-all-errors'; then
+    curl --retry 5 --retry-all-errors --retry-delay 2 -fsSL "$url" -o "$output"
+  else
+    curl --retry 5 --retry-delay 2 -fsSL "$url" -o "$output"
+  fi
+}
+
+prepend_node_runtime_path() {
+  if [ -d "$NODE_RUNTIME_DIR/bin" ]; then
+    case ":$PATH:" in
+      *":$NODE_RUNTIME_DIR/bin:"*) ;;
+      *) export PATH="$NODE_RUNTIME_DIR/bin:$PATH" ;;
+    esac
+  fi
+}
+
+install_node_from_github_runtime() {
+  asset="$(node_runtime_asset)" || return 1
+  expected_sha="$(node_runtime_sha256 "$asset")" || return 1
+  url="$NODE_RUNTIME_BASE_URL/$asset"
+  archive="${TMPDIR:-/tmp}/$asset"
+  extract_dir="${TMPDIR:-/tmp}/peach-node-runtime.$$"
+
+  command -v curl >/dev/null 2>&1 || return 1
+  command -v tar >/dev/null 2>&1 || return 1
+
+  log "正在从 Peach Code GitHub Release 获取 Node.js runtime：$asset"
+  rm -f "$archive"
+  rm -rf "$extract_dir"
+  mkdir -p "$extract_dir" "$RUNTIME_DIR"
+
+  if ! curl_download "$url" "$archive"; then
+    rm -f "$archive"
+    rm -rf "$extract_dir"
+    return 1
+  fi
+
+  actual_sha="$(sha256_file "$archive" || true)"
+  if [ -z "$actual_sha" ] || [ "$actual_sha" != "$expected_sha" ]; then
+    warn "Node.js runtime 校验失败：$asset"
+    rm -f "$archive"
+    rm -rf "$extract_dir"
+    return 1
+  fi
+
+  if ! tar -xJf "$archive" -C "$extract_dir"; then
+    rm -f "$archive"
+    rm -rf "$extract_dir"
+    return 1
+  fi
+
+  extracted_root="$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+  [ -n "$extracted_root" ] || return 1
+
+  rm -rf "$NODE_RUNTIME_DIR"
+  mv "$extracted_root" "$NODE_RUNTIME_DIR"
+  rm -f "$archive"
+  rm -rf "$extract_dir"
+
+  prepend_node_runtime_path
 }
 
 install_node_with_package_manager() {
@@ -202,8 +317,14 @@ ensure_node_runtime() {
     return
   fi
 
-  warn "未检测到可用的 Node.js 18+ 和 npm，正在尝试自动安装。"
-  install_node_with_package_manager || install_node_with_nvm || true
+  prepend_node_runtime_path
+  if has_node_runtime; then
+    log_node_runtime
+    return
+  fi
+
+  warn "未检测到可用的 Node.js 18+ 和 npm，正在尝试从 Peach Code GitHub Release 获取。"
+  install_node_from_github_runtime || install_node_with_package_manager || install_node_with_nvm || true
 
   if has_node_runtime; then
     log_node_runtime
@@ -220,7 +341,7 @@ write_manager() {
 #!/usr/bin/env bash
 set -euo pipefail
 
-PEACH_CODE_VERSION="0.4.0"
+PEACH_CODE_VERSION="0.5.0"
 BRAND_NAME="Peach Code"
 PROVIDER_ID="peach"
 PRIMARY_ENDPOINT="https://cli.rhinelab.com.cn"
@@ -793,6 +914,47 @@ export PATH="$HOME/.local/bin:$PATH"
   fi
 }
 
+setup_node_runtime_shell_path() {
+  node_bin="$NODE_RUNTIME_DIR/bin"
+  [ -x "$node_bin/node" ] || return 0
+
+  case ":$PATH:" in
+    *":$node_bin:"*) ;;
+    *) export PATH="$node_bin:$PATH" ;;
+  esac
+
+  block="
+# Peach Code Node.js runtime
+export PATH=\"$node_bin:\$PATH\"
+"
+
+  wrote_profile=0
+  for profile in "$HOME/.zshrc" "$HOME/.bashrc"; do
+    should_write=0
+    [ -f "$profile" ] && should_write=1
+    case "${SHELL:-}" in
+      */zsh) [ "$profile" = "$HOME/.zshrc" ] && should_write=1 ;;
+      */bash) [ "$profile" = "$HOME/.bashrc" ] && should_write=1 ;;
+    esac
+
+    if [ "$should_write" -eq 1 ] && ! grep -q 'Peach Code Node.js runtime' "$profile" 2>/dev/null; then
+      touch "$profile"
+      printf '%s\n' "$block" >>"$profile"
+      log "已将 Peach Code Node.js runtime 加入 $profile"
+      wrote_profile=1
+    fi
+  done
+
+  if [ "$wrote_profile" -eq 0 ]; then
+    profile="$HOME/.profile"
+    if ! grep -q 'Peach Code Node.js runtime' "$profile" 2>/dev/null; then
+      touch "$profile"
+      printf '%s\n' "$block" >>"$profile"
+      log "已将 Peach Code Node.js runtime 加入 $profile"
+    fi
+  fi
+}
+
 install_clis() {
   need_cmd curl
 
@@ -852,6 +1014,7 @@ main() {
   write_manager
   install_command_shim
   setup_shell_path
+  setup_node_runtime_shell_path
 
   log "先写入 Peach Code 中转站配置..."
   "$MANAGER" configure --endpoint "$endpoint"

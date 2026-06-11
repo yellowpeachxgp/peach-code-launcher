@@ -1,18 +1,23 @@
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.4.0"
+$PeachCodeVersion = "0.5.0"
 $BrandName = "Peach Code"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
 $SpeedEndpoint = "https://cli-speed.rhinelab.com.cn"
 $KeyUrl = "https://cli.rhinelab.com.cn/keys"
 $DefaultInstallUrl = if ($env:PEACH_CODE_INSTALL_URL) { $env:PEACH_CODE_INSTALL_URL } else { "https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.ps1" }
+$NodeRuntimeVersion = "v24.16.0"
+$NodeRuntimeTag = "node-runtime-v24.16.0"
+$NodeRuntimeBaseUrl = if ($env:PEACH_CODE_NODE_RUNTIME_BASE_URL) { $env:PEACH_CODE_NODE_RUNTIME_BASE_URL } else { "https://github.com/yellowpeachxgp/peach-code-launcher/releases/download/node-runtime-v24.16.0" }
 
 $StateDir = if ($env:PEACH_CODE_HOME) { $env:PEACH_CODE_HOME } else { Join-Path $HOME ".peach-code" }
 $BinDir = Join-Path $StateDir "bin"
 $ApiKeyFile = Join-Path $StateDir "api_key"
 $EndpointFile = Join-Path $StateDir "endpoint"
 $InstallUrlFile = Join-Path $StateDir "install_url"
+$RuntimeDir = Join-Path $StateDir "runtime"
+$NodeRuntimeDir = Join-Path $RuntimeDir "node"
 $Helper = Join-Path $BinDir "peach-api-key.ps1"
 $HelperCmd = Join-Path $BinDir "peach-api-key.cmd"
 $Manager = Join-Path $BinDir "peach-code.ps1"
@@ -51,15 +56,26 @@ function Select-PeachEndpoint {
   }
 }
 
-function Add-BinToUserPath {
+function Add-UserPathEntry($PathEntry, $Label) {
   $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
   if (-not $userPath) { $userPath = "" }
   $parts = $userPath -split ";" | Where-Object { $_ }
-  if ($parts -notcontains $BinDir) {
-    $newPath = if ($userPath) { "$userPath;$BinDir" } else { $BinDir }
+  if ($parts -notcontains $PathEntry) {
+    $newPath = if ($userPath) { "$userPath;$PathEntry" } else { $PathEntry }
     [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-    $env:Path = "$env:Path;$BinDir"
-    Write-Info "已将 $BinDir 加入用户 PATH。新终端会自动生效。"
+    $env:Path = "$env:Path;$PathEntry"
+    Write-Info "已将 $Label 加入用户 PATH：$PathEntry。新终端会自动生效。"
+  }
+}
+
+function Add-BinToUserPath {
+  Add-UserPathEntry $BinDir "Peach Code 命令目录"
+}
+
+function Add-NodeRuntimeToUserPath {
+  $nodeExe = Join-Path $NodeRuntimeDir "node.exe"
+  if (Test-Path $nodeExe) {
+    Add-UserPathEntry $NodeRuntimeDir "Peach Code Node.js runtime"
   }
 }
 
@@ -89,6 +105,72 @@ function Write-NodeRuntime {
   $nodeVersion = if (Get-Command node -ErrorAction SilentlyContinue) { (& node -v).Trim() } else { "missing" }
   $npmVersion = if (Get-Command npm -ErrorAction SilentlyContinue) { (& npm -v).Trim() } else { "missing" }
   Write-Info "Node.js/npm 已就绪：node $nodeVersion, npm $npmVersion"
+}
+
+function Get-NodeRuntimeAsset {
+  $arch = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+  switch ($arch) {
+    "x64" { return "node-$NodeRuntimeVersion-win-x64.zip" }
+    "arm64" { return "node-$NodeRuntimeVersion-win-arm64.zip" }
+    default { throw "Unsupported Windows architecture for mirrored Node runtime: $arch" }
+  }
+}
+
+function Get-NodeRuntimeSha256($Asset) {
+  switch ($Asset) {
+    "node-v24.16.0-win-x64.zip" { return "edaca9bd58ec8e92037dac4e877d52f6b8f430b81c18b57e264b4e2fb111cd56" }
+    "node-v24.16.0-win-arm64.zip" { return "14834611d4c6b3c06054e7007732b90474c16e0b32f395e05b55a571ef71c6d2" }
+    default { throw "No checksum configured for $Asset" }
+  }
+}
+
+function Add-NodeRuntimeToPath {
+  if (Test-Path $NodeRuntimeDir) {
+    $env:Path = "$NodeRuntimeDir;$env:Path"
+  }
+}
+
+function Invoke-DownloadFile($Url, $OutFile) {
+  for ($attempt = 1; $attempt -le 5; $attempt++) {
+    try {
+      Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $OutFile
+      return
+    } catch {
+      if ($attempt -eq 5) { throw }
+      Start-Sleep -Seconds ([Math]::Min($attempt * 2, 10))
+    }
+  }
+}
+
+function Install-NodeFromGithubRuntime {
+  $asset = Get-NodeRuntimeAsset
+  $expectedHash = Get-NodeRuntimeSha256 $asset
+  $url = "$NodeRuntimeBaseUrl/$asset"
+  $archive = Join-Path $env:TEMP $asset
+  $extractDir = Join-Path $env:TEMP "peach-node-runtime-$([Guid]::NewGuid())"
+
+  Write-Info "正在从 Peach Code GitHub Release 获取 Node.js runtime：$asset"
+  New-Item -ItemType Directory -Force -Path $extractDir, $RuntimeDir | Out-Null
+  Invoke-DownloadFile $url $archive
+
+  $actualHash = (Get-FileHash -Algorithm SHA256 -Path $archive).Hash.ToLowerInvariant()
+  if ($actualHash -ne $expectedHash) {
+    Remove-Item $archive -Force -ErrorAction SilentlyContinue
+    Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    throw "Node.js runtime 校验失败：$asset"
+  }
+
+  Expand-Archive -Path $archive -DestinationPath $extractDir -Force
+  $root = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1
+  if (-not $root) {
+    throw "Node.js runtime 解压失败：$asset"
+  }
+
+  Remove-Item $NodeRuntimeDir -Recurse -Force -ErrorAction SilentlyContinue
+  Move-Item $root.FullName $NodeRuntimeDir
+  Remove-Item $archive -Force -ErrorAction SilentlyContinue
+  Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+  Add-NodeRuntimeToPath
 }
 
 function Install-NodeRuntime {
@@ -132,8 +214,19 @@ function Ensure-NodeRuntime {
     return
   }
 
-  Write-Warn "未检测到可用的 Node.js 18+ 和 npm，正在尝试自动安装。"
-  Install-NodeRuntime
+  Add-NodeRuntimeToPath
+  if (Test-NodeRuntime) {
+    Write-NodeRuntime
+    return
+  }
+
+  Write-Warn "未检测到可用的 Node.js 18+ 和 npm，正在尝试从 Peach Code GitHub Release 获取。"
+  try {
+    Install-NodeFromGithubRuntime
+  } catch {
+    Write-Warn "$($_.Exception.Message)"
+    Install-NodeRuntime
+  }
 
   if (Test-NodeRuntime) {
     Write-NodeRuntime
@@ -149,7 +242,7 @@ function Write-Manager {
   $managerContent = @'
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.4.0"
+$PeachCodeVersion = "0.5.0"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
 $SpeedEndpoint = "https://cli-speed.rhinelab.com.cn"
@@ -602,6 +695,8 @@ Environment overrides:
   PEACH_CODE_ENDPOINT       Use a custom endpoint instead of prompting.
   PEACH_CODE_INSTALL_URL    URL used by 'peach-code update'.
   PEACH_CODE_NO_BROWSER=1   Do not open the API key page automatically.
+  PEACH_CODE_NODE_RUNTIME_BASE_URL
+                            URL prefix for mirrored Node.js runtime assets.
   PEACH_CODE_SKIP_NODE=1    Skip Node.js/npm dependency checks.
   PEACH_CODE_SKIP_AUTH=1    Do not prompt for an API key.
   PEACH_CODE_DRY_RUN=1      Skip official CLI installers for local testing.
@@ -620,6 +715,7 @@ Ensure-NodeRuntime
 Install-OfficialClis
 Write-Manager
 Add-BinToUserPath
+Add-NodeRuntimeToUserPath
 
 Write-Info "先写入 Peach Code 中转站配置..."
 powershell -NoProfile -ExecutionPolicy Bypass -File $Manager configure --endpoint $Endpoint
