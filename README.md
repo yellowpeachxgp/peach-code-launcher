@@ -1,33 +1,118 @@
 # Peach Code Launcher
 
-One-click installer for Peach Code users. Users copy one command, the script installs or refreshes the global `peach-code` terminal menu, writes Peach Code as the default gateway/provider, and installs Claude Code CLI / Codex CLI only when they are missing.
+Peach Code 一键安装器。用户复制一条命令后，安装器会自动安装或刷新全局 `peach-code` 管理菜单，写入 Peach Code 中转站配置，并在缺少 Claude Code CLI / Codex CLI 时自动补齐。
 
-## What It Configures
+当前安装器版本：`0.5.1`
 
-Peach Code has two endpoints:
+## 一键安装
 
-- Main: `https://cli.rhinelab.com.cn`
-- CMIN2 direct: `https://cli-speed.rhinelab.com.cn`
+macOS、Linux、WSL：
 
-The installer writes:
+```bash
+curl -fsSL https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.sh | bash
+```
 
-- Claude Code user settings: `~/.claude/settings.json`
-- Codex user config: `~/.codex/config.toml`
-- Peach Code API key: `~/.peach-code/api_key`
-- Terminal manager: `peach-code`
+Windows PowerShell：
 
-On macOS/Linux, the installer places a `peach-code` command shim in `/usr/local/bin` when possible, then falls back to `~/.local/bin` and updates the user's shell profile. On Windows, it installs `peach-code.cmd` under `~/.peach-code/bin` and adds that directory to the user PATH.
+```powershell
+irm https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.ps1 | iex
+```
 
-When both `claude` and `codex` are already installed, the installer skips Node.js/npm checks and official CLI installers, then only refreshes `peach-code` and Peach Code config. If either CLI is missing, the installer verifies Node.js 18+ and npm first. If the machine does not already have a usable Node.js, it first tries Peach Code's mirrored portable Node.js runtime from this repository's GitHub Releases, then falls back to system package managers:
+安装过程中用户会看到三步引导：
 
-- macOS/Linux: existing Node.js 18+ and npm, existing Peach Code runtime, GitHub Release runtime, Homebrew/apt/dnf/yum/pacman/apk/zypper, then nvm fallback.
-- Windows: existing Node.js 18+ and npm, existing Peach Code runtime, GitHub Release runtime, winget, Chocolatey, then Scoop.
+1. 选择 Peach Code 线路。
+2. 自动打开 API Key 页面。
+3. 在 terminal 里粘贴 API Key。
 
-The mirrored runtime is installed under `~/.peach-code/runtime/node`. On macOS/Linux, the installer adds its `bin` directory to the user's shell profile when that runtime is used. On Windows, the installer adds the runtime directory to the user PATH.
+API Key 页面：
 
-Set `PEACH_CODE_SKIP_NODE=1` only when you intentionally want to skip this dependency preflight.
+```text
+https://cli.rhinelab.com.cn/keys
+```
 
-Codex is configured as an explicit provider:
+## 安装器会做什么
+
+Peach Code 支持两条线路：
+
+- 主线路：`https://cli.rhinelab.com.cn`
+- CMIN2 直连线路：`https://cli-speed.rhinelab.com.cn`
+
+安装器会写入这些内容：
+
+- Claude Code 配置：`~/.claude/settings.json`
+- Codex 配置：`~/.codex/config.toml`
+- Peach Code API Key：`~/.peach-code/api_key`
+- 管理命令：`peach-code`
+
+如果检测到 `claude` 和 `codex` 都已经安装，安装器会跳过 Node.js/npm 检查和官方 CLI 安装器，只刷新 `peach-code` 管理脚本、写入 Peach Code 配置，并继续 API Key 引导。
+
+如果缺少其中任意一个 CLI，安装器会先确保 Node.js 18+ 和 npm 可用，然后只安装缺失的 CLI：
+
+- 已安装 `claude`、缺少 `codex`：只安装 Codex CLI。
+- 已安装 `codex`、缺少 `claude`：只安装 Claude Code CLI。
+- 两个都缺少：两个都安装。
+
+## Node.js 依赖兜底
+
+Claude Code CLI 依赖 Node.js/npm。为了让小白用户尽量少处理环境问题，安装器会按以下顺序处理 Node.js：
+
+macOS/Linux：
+
+1. 使用已有的 Node.js 18+ 和 npm。
+2. 使用已有的 Peach Code 内置 runtime。
+3. 从 GitHub Release 下载 Peach Code 镜像的便携 Node.js runtime。
+4. 尝试 Homebrew、apt、dnf、yum、pacman、apk、zypper。
+5. 最后尝试 nvm。
+
+Windows：
+
+1. 使用已有的 Node.js 18+ 和 npm。
+2. 使用已有的 Peach Code 内置 runtime。
+3. 从 GitHub Release 下载 Peach Code 镜像的便携 Node.js runtime。
+4. 尝试 winget、Chocolatey、Scoop。
+
+内置 runtime 安装目录：
+
+```text
+~/.peach-code/runtime/node
+```
+
+对应 GitHub Release：
+
+```text
+https://github.com/yellowpeachxgp/peach-code-launcher/releases/tag/node-runtime-v24.16.0
+```
+
+## 安装后的命令
+
+安装完成后，用户可以在任意目录运行：
+
+```bash
+peach-code
+peach-code keys
+peach-code auth
+peach-code endpoint
+peach-code doctor
+peach-code update
+```
+
+命令说明：
+
+- `peach-code`：打开交互式管理菜单。
+- `peach-code keys`：打开 Peach Code API Key 页面。
+- `peach-code auth`：输入或更新本地 API Key。
+- `peach-code endpoint`：切换主线路 / CMIN2 直连线路。
+- `peach-code endpoint primary`：切换到主线路。
+- `peach-code endpoint speed`：切换到 CMIN2 直连线路。
+- `peach-code configure`：重新写入 Claude/Codex 配置。
+- `peach-code doctor`：检查 CLI、配置、线路和 key 状态，不会打印 key 内容。
+- `peach-code update`：从 GitHub 检查并自动执行新版安装器。
+- `peach-code update --check`：只检查版本，不安装。
+- `peach-code version`：显示当前管理脚本版本。
+
+## 配置写入示例
+
+Codex 会被配置成独立 provider：
 
 ```toml
 model_provider = "peach"
@@ -42,7 +127,7 @@ command = "/Users/example/.peach-code/bin/peach-api-key"
 refresh_interval_ms = 0
 ```
 
-Claude is configured through its official gateway settings:
+Claude Code 会写入官方 gateway 配置：
 
 ```json
 {
@@ -54,73 +139,112 @@ Claude is configured through its official gateway settings:
 }
 ```
 
-## User Install Commands
+API Key 不会直接写进 JSON/TOML。安装器会把 key 保存到：
 
-macOS, Linux, or WSL:
+```text
+~/.peach-code/api_key
+```
+
+macOS/Linux 下该文件权限会设置为 `600`。
+
+## 环境变量
+
+| 变量 | 作用 |
+| --- | --- |
+| `PEACH_CODE_ENDPOINT` | 跳过线路选择，直接指定 endpoint。 |
+| `PEACH_CODE_INSTALL_URL` | 指定 `peach-code update` 使用的安装脚本 URL。 |
+| `PEACH_CODE_COMMAND_DIR` | 指定 `peach-code` 命令 shim 的安装目录。 |
+| `PEACH_CODE_NO_BROWSER=1` | 不自动打开浏览器。适合 SSH、CI、无桌面环境。 |
+| `PEACH_CODE_NODE_RUNTIME_BASE_URL` | 指定 Node.js runtime 镜像资产的 URL 前缀。 |
+| `PEACH_CODE_SKIP_NODE=1` | 跳过 Node.js/npm 前置检查。仅建议高级用户使用。 |
+| `PEACH_CODE_SKIP_AUTH=1` | 跳过 API Key 输入。稍后可运行 `peach-code auth`。 |
+| `PEACH_CODE_DRY_RUN=1` | 本地测试模式，跳过官方 CLI 安装器和最终 CLI 验证。 |
+| `PEACH_CODE_NON_INTERACTIVE=1` | 非交互模式，默认使用主线路。 |
+
+示例：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.sh | bash
+PEACH_CODE_NO_BROWSER=1 curl -fsSL https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.sh | bash
 ```
-
-Windows PowerShell:
-
-```powershell
-irm https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.ps1 | iex
-```
-
-Users will be prompted to:
-
-1. Choose the main or CMIN2 direct endpoint.
-2. Let the installer open `https://cli.rhinelab.com.cn/keys` in the browser.
-3. Paste their Peach Code API key back into the terminal.
-
-After that, users can run `peach-code` from any working directory to open the management menu.
-
-## Management Command
-
-After installation, users can run:
 
 ```bash
-peach-code
-peach-code keys
-peach-code auth
-peach-code endpoint
-peach-code doctor
-peach-code update
+PEACH_CODE_ENDPOINT=https://cli-speed.rhinelab.com.cn curl -fsSL https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.sh | bash
 ```
 
-Commands:
+## 本地验证
 
-- `peach-code`: open the interactive management menu.
-- `peach-code keys`: open the Peach Code API key page in the default browser.
-- `peach-code auth`: enter or replace the local API key.
-- `peach-code endpoint`: switch between main and CMIN2 direct endpoints.
-- `peach-code doctor`: inspect CLI, config, endpoint, and key status without printing the key.
-- `peach-code update`: check GitHub for a newer installer and run it automatically.
-- `peach-code update --check`: check only.
+运行 smoke test：
 
-## Local Smoke Test
+```bash
+bash tests/smoke.sh
+```
 
-Run without touching your real home directory:
+这个测试会覆盖：
+
+- `install.sh` 语法检查。
+- dry-run 安装流程。
+- `peach-code doctor` / `keys` / `auth`。
+- 已有 `claude` 和 `codex` 时只刷新 `peach-code` 的路径。
+- Node.js runtime PATH 写入。
+
+手动 dry-run：
 
 ```bash
 tmp_home="$(mktemp -d)"
+cmd_dir="$(mktemp -d)"
+
 HOME="$tmp_home" \
+PEACH_CODE_COMMAND_DIR="$cmd_dir" \
 PEACH_CODE_DRY_RUN=1 \
+PEACH_CODE_SKIP_NODE=1 \
 PEACH_CODE_NON_INTERACTIVE=1 \
 PEACH_CODE_SKIP_AUTH=1 \
 bash install.sh
 
-HOME="$tmp_home" "$tmp_home/.peach-code/bin/peach-code" doctor
+HOME="$tmp_home" PATH="$cmd_dir:$PATH" peach-code doctor
 ```
 
-## Notes For Operators
+## 维护 Node.js Runtime 镜像
 
-- Keep API keys out of the JSON/TOML config files. The installer stores the key in `~/.peach-code/api_key` with file mode `600`.
-- Existing Claude/Codex config files are backed up before edits.
-- Existing Codex config is preserved where possible, but the top-level `model_provider` is changed to `peach` by design.
-- If users need to rotate keys, tell them to run `peach-code auth`.
-- If users are on SSH, CI, or a browserless machine, set `PEACH_CODE_NO_BROWSER=1` to skip automatic browser opening.
-- If users already manage Node.js themselves, they can set `PEACH_CODE_SKIP_NODE=1`, but the default path checks Node/npm for small-user friendliness.
-- If you need to mirror Node.js runtime assets again, run `scripts/mirror-node-runtime.sh`. It downloads official Node.js portable archives, verifies `SHASUMS256.txt`, writes `node-manifest.json`, and uploads the assets to the `node-runtime-v24.16.0` GitHub Release when `gh` is authenticated.
-- To host runtime assets elsewhere, set `PEACH_CODE_NODE_RUNTIME_BASE_URL` to a URL prefix containing the same asset filenames, for example `node-v24.16.0-darwin-arm64.tar.xz`.
+不要把 Node.js 二进制资产提交到 git。便携 runtime 放在 GitHub Release assets。
+
+重新镜像当前版本：
+
+```bash
+bash scripts/mirror-node-runtime.sh
+```
+
+脚本会：
+
+1. 从 Node.js 官方下载 `v24.16.0` 的便携资产。
+2. 使用官方 `SHASUMS256.txt` 校验。
+3. 生成 `node-manifest.json`。
+4. 在 `node-runtime-v24.16.0` GitHub Release 上传或覆盖资产。
+
+如果要使用自己的 runtime 资产地址，需要保持文件名一致，例如：
+
+```text
+node-v24.16.0-darwin-arm64.tar.xz
+node-v24.16.0-darwin-x64.tar.xz
+node-v24.16.0-linux-arm64.tar.xz
+node-v24.16.0-linux-x64.tar.xz
+node-v24.16.0-win-arm64.zip
+node-v24.16.0-win-x64.zip
+```
+
+然后设置：
+
+```bash
+PEACH_CODE_NODE_RUNTIME_BASE_URL=https://example.com/node-runtime curl -fsSL https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.sh | bash
+```
+
+## 运维注意
+
+- 站点品牌是 Peach Code；`rhinelab.com.cn` 只是域名。
+- 默认 provider ID 是 `peach`。
+- 现有 Claude/Codex 配置文件会在修改前备份。
+- Codex 顶层 `model_provider` 会被设置为 `peach`，这是预期行为。
+- 用户换 key 时运行 `peach-code auth`。
+- 用户换线路时运行 `peach-code endpoint`。
+- 用户更新安装器时运行 `peach-code update`。
+- 排错文档见 [`docs/troubleshooting.md`](docs/troubleshooting.md)。
