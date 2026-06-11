@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.3.0"
+$PeachCodeVersion = "0.4.0"
 $BrandName = "Peach Code"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
@@ -63,13 +63,93 @@ function Add-BinToUserPath {
   }
 }
 
+function Update-CurrentPathFromRegistry {
+  $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  $env:Path = @($machinePath, $userPath) -join ";"
+}
+
+function Test-NodeRuntime {
+  $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+  $npmCommand = Get-Command npm -ErrorAction SilentlyContinue
+  if (-not $nodeCommand -or -not $npmCommand) {
+    return $false
+  }
+
+  try {
+    $nodeVersion = (& node -v).Trim().TrimStart("v")
+    $major = [int]($nodeVersion.Split(".")[0])
+    return $major -ge 18
+  } catch {
+    return $false
+  }
+}
+
+function Write-NodeRuntime {
+  $nodeVersion = if (Get-Command node -ErrorAction SilentlyContinue) { (& node -v).Trim() } else { "missing" }
+  $npmVersion = if (Get-Command npm -ErrorAction SilentlyContinue) { (& npm -v).Trim() } else { "missing" }
+  Write-Info "Node.js/npm 已就绪：node $nodeVersion, npm $npmVersion"
+}
+
+function Install-NodeRuntime {
+  if (Get-Command winget -ErrorAction SilentlyContinue) {
+    Write-Info "正在通过 winget 安装 Node.js LTS..."
+    winget install --id OpenJS.NodeJS.LTS -e --accept-package-agreements --accept-source-agreements
+    Update-CurrentPathFromRegistry
+    return
+  }
+
+  if (Get-Command choco -ErrorAction SilentlyContinue) {
+    Write-Info "正在通过 Chocolatey 安装 Node.js LTS..."
+    choco install nodejs-lts -y
+    Update-CurrentPathFromRegistry
+    return
+  }
+
+  if (Get-Command scoop -ErrorAction SilentlyContinue) {
+    Write-Info "正在通过 Scoop 安装 Node.js LTS..."
+    scoop install nodejs-lts
+    Update-CurrentPathFromRegistry
+    return
+  }
+
+  throw "未找到 winget、Chocolatey 或 Scoop，无法自动安装 Node.js/npm。"
+}
+
+function Ensure-NodeRuntime {
+  if ($env:PEACH_CODE_DRY_RUN -eq "1") {
+    Write-Info "DRY RUN: 跳过 Node.js/npm 前置依赖检查。"
+    return
+  }
+
+  if ($env:PEACH_CODE_SKIP_NODE -eq "1") {
+    Write-Warn "已按 PEACH_CODE_SKIP_NODE=1 跳过 Node.js/npm 前置依赖检查。"
+    return
+  }
+
+  if (Test-NodeRuntime) {
+    Write-NodeRuntime
+    return
+  }
+
+  Write-Warn "未检测到可用的 Node.js 18+ 和 npm，正在尝试自动安装。"
+  Install-NodeRuntime
+
+  if (Test-NodeRuntime) {
+    Write-NodeRuntime
+    return
+  }
+
+  throw "未能自动安装 Node.js 18+ 和 npm。请安装 Node.js LTS 后重新运行安装命令：https://nodejs.org/"
+}
+
 function Write-Manager {
   New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 
   $managerContent = @'
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.3.0"
+$PeachCodeVersion = "0.4.0"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
 $SpeedEndpoint = "https://cli-speed.rhinelab.com.cn"
@@ -522,6 +602,7 @@ Environment overrides:
   PEACH_CODE_ENDPOINT       Use a custom endpoint instead of prompting.
   PEACH_CODE_INSTALL_URL    URL used by 'peach-code update'.
   PEACH_CODE_NO_BROWSER=1   Do not open the API key page automatically.
+  PEACH_CODE_SKIP_NODE=1    Skip Node.js/npm dependency checks.
   PEACH_CODE_SKIP_AUTH=1    Do not prompt for an API key.
   PEACH_CODE_DRY_RUN=1      Skip official CLI installers for local testing.
 "@
@@ -535,6 +616,7 @@ Write-Info "将使用端点：$Endpoint"
 New-Item -ItemType Directory -Force -Path $StateDir, $BinDir | Out-Null
 $DefaultInstallUrl | Set-Content -Encoding ASCII -Path $InstallUrlFile
 
+Ensure-NodeRuntime
 Install-OfficialClis
 Write-Manager
 Add-BinToUserPath

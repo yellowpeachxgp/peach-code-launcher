@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PEACH_CODE_VERSION="0.3.0"
+PEACH_CODE_VERSION="0.4.0"
 BRAND_NAME="Peach Code"
 PROVIDER_ID="peach"
 PRIMARY_ENDPOINT="https://cli.rhinelab.com.cn"
@@ -33,6 +33,7 @@ Environment overrides:
   PEACH_CODE_INSTALL_URL    URL used by 'peach-code update'.
   PEACH_CODE_COMMAND_DIR    Directory where the peach-code command shim is installed.
   PEACH_CODE_NO_BROWSER=1   Do not open the API key page automatically.
+  PEACH_CODE_SKIP_NODE=1    Skip Node.js/npm dependency checks.
   PEACH_CODE_SKIP_AUTH=1    Do not prompt for an API key.
   PEACH_CODE_DRY_RUN=1      Skip official CLI installers for local testing.
 USAGE
@@ -84,6 +85,134 @@ select_endpoint() {
   esac
 }
 
+node_major_version() {
+  if ! command -v node >/dev/null 2>&1; then
+    return 1
+  fi
+
+  node -v 2>/dev/null | sed 's/^v//' | cut -d. -f1
+}
+
+has_node_runtime() {
+  major="$(node_major_version || true)"
+  [ -n "$major" ] || return 1
+  [ "$major" -ge 18 ] 2>/dev/null || return 1
+  command -v npm >/dev/null 2>&1 || return 1
+}
+
+log_node_runtime() {
+  node_version="$(node -v 2>/dev/null || printf missing)"
+  npm_version="$(npm -v 2>/dev/null || printf missing)"
+  log "Node.js/npm 已就绪：node ${node_version}, npm ${npm_version}"
+}
+
+install_node_with_package_manager() {
+  os_name="$(uname -s 2>/dev/null || printf unknown)"
+
+  if [ "$os_name" = "Darwin" ] && command -v brew >/dev/null 2>&1; then
+    log "正在通过 Homebrew 安装 Node.js LTS..."
+    brew install node
+    return 0
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    log "正在通过 apt 安装 Node.js/npm..."
+    sudo_cmd=""
+    [ "$(id -u)" -eq 0 ] || sudo_cmd="sudo"
+    $sudo_cmd apt-get update
+    $sudo_cmd apt-get install -y nodejs npm
+    return 0
+  fi
+
+  if command -v dnf >/dev/null 2>&1; then
+    log "正在通过 dnf 安装 Node.js/npm..."
+    sudo_cmd=""
+    [ "$(id -u)" -eq 0 ] || sudo_cmd="sudo"
+    $sudo_cmd dnf install -y nodejs npm
+    return 0
+  fi
+
+  if command -v yum >/dev/null 2>&1; then
+    log "正在通过 yum 安装 Node.js/npm..."
+    sudo_cmd=""
+    [ "$(id -u)" -eq 0 ] || sudo_cmd="sudo"
+    $sudo_cmd yum install -y nodejs npm
+    return 0
+  fi
+
+  if command -v pacman >/dev/null 2>&1; then
+    log "正在通过 pacman 安装 Node.js/npm..."
+    sudo_cmd=""
+    [ "$(id -u)" -eq 0 ] || sudo_cmd="sudo"
+    $sudo_cmd pacman -Sy --noconfirm nodejs npm
+    return 0
+  fi
+
+  if command -v apk >/dev/null 2>&1; then
+    log "正在通过 apk 安装 Node.js/npm..."
+    sudo_cmd=""
+    [ "$(id -u)" -eq 0 ] || sudo_cmd="sudo"
+    $sudo_cmd apk add --no-cache nodejs npm
+    return 0
+  fi
+
+  if command -v zypper >/dev/null 2>&1; then
+    log "正在通过 zypper 安装 Node.js/npm..."
+    sudo_cmd=""
+    [ "$(id -u)" -eq 0 ] || sudo_cmd="sudo"
+    $sudo_cmd zypper --non-interactive install nodejs npm
+    return 0
+  fi
+
+  return 1
+}
+
+install_node_with_nvm() {
+  command -v curl >/dev/null 2>&1 || return 1
+
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  mkdir -p "$NVM_DIR"
+
+  if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+    log "正在通过 nvm 安装 Node.js LTS..."
+    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+  fi
+
+  # shellcheck disable=SC1091
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+  command -v nvm >/dev/null 2>&1 || return 1
+  nvm install --lts --latest-npm
+  nvm alias default 'lts/*' >/dev/null 2>&1 || true
+}
+
+ensure_node_runtime() {
+  if [ "${PEACH_CODE_DRY_RUN:-}" = "1" ]; then
+    log "DRY RUN: 跳过 Node.js/npm 前置依赖检查。"
+    return
+  fi
+
+  if [ "${PEACH_CODE_SKIP_NODE:-}" = "1" ]; then
+    warn "已按 PEACH_CODE_SKIP_NODE=1 跳过 Node.js/npm 前置依赖检查。"
+    return
+  fi
+
+  if has_node_runtime; then
+    log_node_runtime
+    return
+  fi
+
+  warn "未检测到可用的 Node.js 18+ 和 npm，正在尝试自动安装。"
+  install_node_with_package_manager || install_node_with_nvm || true
+
+  if has_node_runtime; then
+    log_node_runtime
+    return
+  fi
+
+  die "未能自动安装 Node.js 18+ 和 npm。请安装 Node.js LTS 后重新运行安装命令：https://nodejs.org/"
+}
+
 write_manager() {
   mkdir -p "$BIN_DIR" "$LOCAL_BIN"
 
@@ -91,7 +220,7 @@ write_manager() {
 #!/usr/bin/env bash
 set -euo pipefail
 
-PEACH_CODE_VERSION="0.3.0"
+PEACH_CODE_VERSION="0.4.0"
 BRAND_NAME="Peach Code"
 PROVIDER_ID="peach"
 PRIMARY_ENDPOINT="https://cli.rhinelab.com.cn"
@@ -718,6 +847,7 @@ main() {
   mkdir -p "$STATE_DIR" "$BIN_DIR" "$LOCAL_BIN"
   printf '%s\n' "$DEFAULT_INSTALL_URL" >"$INSTALL_URL_FILE"
 
+  ensure_node_runtime
   install_clis
   write_manager
   install_command_shim

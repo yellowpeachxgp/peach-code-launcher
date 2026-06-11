@@ -1,6 +1,6 @@
 # Peach Code Launcher
 
-One-click installer for Peach Code users. Users copy one command, the script installs Claude Code CLI and Codex CLI through their official installers, writes Peach Code as the default gateway/provider, then installs a global `peach-code` terminal menu.
+One-click installer for Peach Code users. Users copy one command, the script checks Node.js 18+ and npm, installs Claude Code CLI and Codex CLI through their official installers, writes Peach Code as the default gateway/provider, then installs a global `peach-code` terminal menu.
 
 ## What It Configures
 
@@ -17,6 +17,13 @@ The installer writes:
 - Terminal manager: `peach-code`
 
 On macOS/Linux, the installer places a `peach-code` command shim in `/usr/local/bin` when possible, then falls back to `~/.local/bin` and updates the user's shell profile. On Windows, it installs `peach-code.cmd` under `~/.peach-code/bin` and adds that directory to the user PATH.
+
+The installer also verifies Node.js 18+ and npm before installing the CLIs. It tries common package managers first:
+
+- macOS/Linux: Homebrew, apt, dnf, yum, pacman, apk, zypper, then nvm fallback.
+- Windows: winget, Chocolatey, then Scoop.
+
+Set `PEACH_CODE_SKIP_NODE=1` only when you intentionally want to skip this dependency preflight.
 
 Codex is configured as an explicit provider:
 
@@ -112,3 +119,4 @@ HOME="$tmp_home" "$tmp_home/.peach-code/bin/peach-code" doctor
 - Existing Codex config is preserved where possible, but the top-level `model_provider` is changed to `peach` by design.
 - If users need to rotate keys, tell them to run `peach-code auth`.
 - If users are on SSH, CI, or a browserless machine, set `PEACH_CODE_NO_BROWSER=1` to skip automatic browser opening.
+- If users already manage Node.js themselves, they can set `PEACH_CODE_SKIP_NODE=1`, but the default path checks Node/npm for small-user friendliness.

@@ -55,6 +55,29 @@ For SSH, CI, or browserless environments:
 PEACH_CODE_NO_BROWSER=1 peach-code auth
 ```
 
+## Node.js Or npm Problems
+
+The installer checks for Node.js 18+ and npm before it runs the Claude/Codex official installers.
+
+If automatic installation fails, install Node.js LTS manually:
+
+```text
+https://nodejs.org/
+```
+
+Then verify:
+
+```bash
+node -v
+npm -v
+```
+
+Advanced users who already manage Node.js can skip the preflight:
+
+```bash
+PEACH_CODE_SKIP_NODE=1 curl -fsSL https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.sh | bash
+```
+
 ## Check The Installation
 
 Run:
