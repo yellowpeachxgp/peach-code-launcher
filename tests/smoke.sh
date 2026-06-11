@@ -40,7 +40,7 @@ assert_order() {
 
 bash -n install.sh
 
-assert_contains install.sh 'PEACH_CODE_VERSION="0.5.3"'
+assert_contains install.sh 'PEACH_CODE_VERSION="0.5.4"'
 assert_contains install.sh 'NODE_RUNTIME_VERSION="v24.16.0"'
 assert_contains install.sh 'install_node_from_github_runtime'
 assert_contains install.sh 'curl_download'
@@ -55,10 +55,16 @@ assert_contains install.sh 'PEACH_CODE_SKIP_NODE=1'
 assert_order install.sh 'ensure_node_runtime' 'run_remote_shell_installer "https://claude.ai/install.sh" bash'
 assert_order install.sh 'install_node_from_github_runtime' 'install_node_with_package_manager'
 
-assert_contains install.ps1 '$PeachCodeVersion = "0.5.3"'
+assert_contains install.ps1 '$PeachCodeVersion = "0.5.4"'
 assert_contains install.ps1 '$NodeRuntimeVersion = "v24.16.0"'
 assert_contains install.ps1 'Install-NodeFromGithubRuntime'
 assert_contains install.ps1 'Invoke-DownloadFile'
+assert_contains install.ps1 'Get-CliPath'
+assert_contains install.ps1 'Get-ClaudeCliPath'
+assert_contains install.ps1 'Get-CodexCliPath'
+assert_contains install.ps1 'claude.cmd'
+assert_contains install.ps1 'codex.cmd'
+assert_contains install.ps1 '.claude\local\claude.exe'
 assert_contains install.ps1 'Test-InstallerLooksLikeHtml'
 assert_contains install.ps1 'Invoke-RemotePowerShellInstaller'
 assert_contains install.ps1 '@anthropic-ai/claude-code@latest'
@@ -100,7 +106,7 @@ HOME="$tmp_home" PATH="$cmd_dir:/usr/bin:/bin:/usr/sbin:/sbin" peach-code doctor
 HOME="$tmp_home" PATH="$cmd_dir:/usr/bin:/bin:/usr/sbin:/sbin" PEACH_CODE_NO_BROWSER=1 peach-code keys >/tmp/peach-code-smoke-keys.log 2>&1
 printf 'pc-smoke-key\n' | HOME="$tmp_home" PATH="$cmd_dir:/usr/bin:/bin:/usr/sbin:/sbin" PEACH_CODE_NO_BROWSER=1 peach-code auth >/tmp/peach-code-smoke-auth.log 2>&1
 
-assert_contains /tmp/peach-code-smoke-install.log 'Peach Code 安装器 0.5.3'
+assert_contains /tmp/peach-code-smoke-install.log 'Peach Code 安装器 0.5.4'
 assert_contains /tmp/peach-code-smoke-install.log 'DRY RUN: 跳过 Node.js/npm 前置依赖检查。'
 assert_contains /tmp/peach-code-smoke-doctor.log 'Claude config: ok'
 assert_contains /tmp/peach-code-smoke-doctor.log 'Codex config: ok'
@@ -141,6 +147,6 @@ if grep -Fq 'claude.ai/install.sh' /tmp/peach-code-smoke-existing-clis.log; then
   fail "existing CLI flow should skip Claude official installer"
 fi
 HOME="$installed_home" PATH="$installed_cmd_dir:$fake_bin:/usr/bin:/bin:/usr/sbin:/sbin" peach-code version >/tmp/peach-code-smoke-existing-version.log
-assert_contains /tmp/peach-code-smoke-existing-version.log '0.5.3'
+assert_contains /tmp/peach-code-smoke-existing-version.log '0.5.4'
 
 printf 'smoke ok\n'

@@ -77,6 +77,22 @@ The installer checks for Node.js 18+ and npm before it runs any missing Claude/C
 
 If a PowerShell installer downloads HTML instead of a script, the launcher detects that and falls back to npm for the missing CLI.
 
+## Claude Or Codex Is Installed But Still Detected As Missing
+
+Use installer `0.5.4` or newer. The Windows installer refreshes Machine/User PATH and checks `claude`, `claude.cmd`, `claude.exe`, npm global paths, and common `~/.claude` / `~/.codex` local install paths.
+
+Re-run the Windows command:
+
+```powershell
+irm https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.ps1 | iex
+```
+
+Or from CMD:
+
+```bat
+curl -fsSL -o "%TEMP%\peach-code-install.cmd" https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.cmd && "%TEMP%\peach-code-install.cmd"
+```
+
 If Node.js is missing, the installer first tries to download Peach Code's mirrored portable Node.js runtime from GitHub Releases. The runtime is installed under:
 
 ```text

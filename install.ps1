@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.5.3"
+$PeachCodeVersion = "0.5.4"
 $BrandName = "Peach Code"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
@@ -57,6 +57,7 @@ function Select-PeachEndpoint {
 }
 
 function Add-UserPathEntry($PathEntry, $Label) {
+  if (-not $PathEntry) { return }
   $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
   if (-not $userPath) { $userPath = "" }
   $parts = $userPath -split ";" | Where-Object { $_ }
@@ -82,7 +83,19 @@ function Add-NodeRuntimeToUserPath {
 function Update-CurrentPathFromRegistry {
   $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
   $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-  $env:Path = @($machinePath, $userPath) -join ";"
+  $entries = New-Object System.Collections.Generic.List[string]
+
+  foreach ($pathList in @($env:Path, $machinePath, $userPath)) {
+    if (-not $pathList) { continue }
+    foreach ($entry in ($pathList -split ";")) {
+      if (-not $entry) { continue }
+      if ($entries -notcontains $entry) {
+        $entries.Add($entry)
+      }
+    }
+  }
+
+  $env:Path = $entries -join ";"
 }
 
 function Test-NodeRuntime {
@@ -278,15 +291,106 @@ function Ensure-NodeRuntime {
 }
 
 function Test-ClaudeCliInstalled {
-  return [bool](Get-Command claude -ErrorAction SilentlyContinue)
+  return [bool](Get-ClaudeCliPath)
 }
 
 function Test-CodexCliInstalled {
-  return [bool](Get-Command codex -ErrorAction SilentlyContinue)
+  return [bool](Get-CodexCliPath)
 }
 
 function Test-OfficialClisInstalled {
   return (Test-ClaudeCliInstalled) -and (Test-CodexCliInstalled)
+}
+
+function Get-NpmGlobalPrefix {
+  $npm = Get-Command npm -ErrorAction SilentlyContinue
+  if (-not $npm) { return "" }
+
+  try {
+    $prefix = (& npm config get prefix 2>$null | Select-Object -First 1).Trim()
+    if ($prefix -and $prefix -ne "undefined" -and (Test-Path $prefix)) {
+      return $prefix
+    }
+  } catch {
+    return ""
+  }
+
+  return ""
+}
+
+function Get-CliCandidatePaths($BaseName) {
+  $paths = New-Object System.Collections.Generic.List[string]
+
+  foreach ($dir in @($NodeRuntimeDir, (Join-Path $HOME ".local\bin"))) {
+    if ($dir) {
+      $paths.Add((Join-Path $dir "$BaseName.cmd"))
+      $paths.Add((Join-Path $dir "$BaseName.exe"))
+      $paths.Add((Join-Path $dir $BaseName))
+    }
+  }
+
+  if ($env:APPDATA) {
+    $npmDir = Join-Path $env:APPDATA "npm"
+    $paths.Add((Join-Path $npmDir "$BaseName.cmd"))
+    $paths.Add((Join-Path $npmDir "$BaseName.exe"))
+  }
+
+  $npmPrefix = Get-NpmGlobalPrefix
+  if ($npmPrefix) {
+    $paths.Add((Join-Path $npmPrefix "$BaseName.cmd"))
+    $paths.Add((Join-Path $npmPrefix "$BaseName.exe"))
+    $paths.Add((Join-Path $npmPrefix "bin\$BaseName.cmd"))
+    $paths.Add((Join-Path $npmPrefix "bin\$BaseName"))
+  }
+
+  if ($BaseName -eq "claude") {
+    foreach ($path in @(
+      (Join-Path $HOME ".claude\local\claude.exe"),
+      (Join-Path $HOME ".claude\local\claude.cmd"),
+      (Join-Path $HOME ".claude\local\claude")
+    )) {
+      $paths.Add($path)
+    }
+  }
+
+  if ($BaseName -eq "codex") {
+    foreach ($path in @(
+      (Join-Path $HOME ".codex\local\codex.exe"),
+      (Join-Path $HOME ".codex\local\codex.cmd"),
+      (Join-Path $HOME ".codex\local\codex")
+    )) {
+      $paths.Add($path)
+    }
+  }
+
+  return $paths
+}
+
+function Get-CliPath($BaseName) {
+  Update-CurrentPathFromRegistry
+
+  foreach ($name in @($BaseName, "$BaseName.cmd", "$BaseName.exe", "$BaseName.ps1")) {
+    $found = Get-Command $name -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($found) { return $found.Source }
+  }
+
+  foreach ($candidate in (Get-CliCandidatePaths $BaseName)) {
+    if ($candidate -and (Test-Path $candidate)) {
+      $dir = Split-Path -Parent $candidate
+      Add-UserPathEntry $dir "$BaseName CLI 目录"
+      return $candidate
+    }
+  }
+
+  return ""
+}
+
+function Get-ClaudeCliPath {
+  return Get-CliPath "claude"
+}
+
+function Get-CodexCliPath {
+  return Get-CliPath "codex"
 }
 
 function Write-Manager {
@@ -295,7 +399,7 @@ function Write-Manager {
   $managerContent = @'
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.5.3"
+$PeachCodeVersion = "0.5.4"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
 $SpeedEndpoint = "https://cli-speed.rhinelab.com.cn"
@@ -716,7 +820,7 @@ function Install-OfficialClis {
   }
 
   if (Test-ClaudeCliInstalled) {
-    $claudePath = (Get-Command claude).Source
+    $claudePath = Get-ClaudeCliPath
     Write-Info "已检测到 Claude Code CLI：$claudePath"
   } else {
     Write-Info "正在安装 Claude Code CLI..."
@@ -727,7 +831,7 @@ function Install-OfficialClis {
   }
 
   if (Test-CodexCliInstalled) {
-    $codexPath = (Get-Command codex).Source
+    $codexPath = Get-CodexCliPath
     Write-Info "已检测到 Codex CLI：$codexPath"
   } else {
     Write-Info "正在安装 Codex CLI..."
