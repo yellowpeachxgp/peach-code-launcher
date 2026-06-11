@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PEACH_CODE_VERSION="0.5.1"
+PEACH_CODE_VERSION="0.5.2"
 BRAND_NAME="Peach Code"
 PROVIDER_ID="peach"
 PRIMARY_ENDPOINT="https://cli.rhinelab.com.cn"
@@ -164,6 +164,34 @@ curl_download() {
   else
     curl --retry 5 --retry-delay 2 -fsSL "$url" -o "$output"
   fi
+}
+
+installer_looks_like_html() {
+  sed -n '1,20p' "$1" | grep -Eiq '<!doctype|<html|<script'
+}
+
+run_remote_shell_installer() {
+  url="$1"
+  shift
+  tmp="$(mktemp "${TMPDIR:-/tmp}/peach-code-remote-installer.XXXXXX")"
+
+  if ! curl_download "$url" "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+
+  if installer_looks_like_html "$tmp"; then
+    warn "远程安装器返回了 HTML 页面而不是可执行脚本：$url"
+    rm -f "$tmp"
+    return 1
+  fi
+
+  if ! "$@" "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+
+  rm -f "$tmp"
 }
 
 prepend_node_runtime_path() {
@@ -353,7 +381,7 @@ write_manager() {
 #!/usr/bin/env bash
 set -euo pipefail
 
-PEACH_CODE_VERSION="0.5.1"
+PEACH_CODE_VERSION="0.5.2"
 BRAND_NAME="Peach Code"
 PROVIDER_ID="peach"
 PRIMARY_ENDPOINT="https://cli.rhinelab.com.cn"
@@ -984,14 +1012,22 @@ install_clis() {
     log "已检测到 Claude Code CLI：$(command -v claude)"
   else
     log "正在安装 Claude Code CLI..."
-    curl -fsSL https://claude.ai/install.sh | bash
+    if ! run_remote_shell_installer "https://claude.ai/install.sh" bash; then
+      warn "Claude Code 原生安装器不可用，尝试 npm fallback。"
+      command -v npm >/dev/null 2>&1 || die "npm is required for Claude Code fallback install."
+      npm install -g @anthropic-ai/claude-code@latest
+    fi
   fi
 
   if has_codex_cli; then
     log "已检测到 Codex CLI：$(command -v codex)"
   else
     log "正在安装 Codex CLI..."
-    curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh
+    if ! CODEX_NON_INTERACTIVE=1 run_remote_shell_installer "https://chatgpt.com/codex/install.sh" sh; then
+      warn "Codex CLI 原生安装器不可用，尝试 npm fallback。"
+      command -v npm >/dev/null 2>&1 || die "npm is required for Codex CLI fallback install."
+      npm install -g @openai/codex@latest
+    fi
   fi
 }
 

@@ -2,7 +2,7 @@
 
 Peach Code 一键安装器。用户复制一条命令后，安装器会自动安装或刷新全局 `peach-code` 管理菜单，写入 Peach Code 中转站配置，并在缺少 Claude Code CLI / Codex CLI 时自动补齐。
 
-当前安装器版本：`0.5.1`
+当前安装器版本：`0.5.2`
 
 ## 一键安装
 
@@ -17,6 +17,14 @@ Windows PowerShell：
 ```powershell
 irm https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.ps1 | iex
 ```
+
+Windows CMD：
+
+```bat
+curl -fsSL -o "%TEMP%\peach-code-install.cmd" https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.cmd && "%TEMP%\peach-code-install.cmd"
+```
+
+注意：`curl ... install.sh | bash` 只适用于 macOS、Linux、WSL，不适用于 Windows CMD。如果在 CMD 里看到 `'bash' 不是内部或外部命令`，请改用上面的 Windows CMD 命令。
 
 安装过程中用户会看到三步引导：
 
@@ -70,6 +78,13 @@ Windows：
 2. 使用已有的 Peach Code 内置 runtime。
 3. 从 GitHub Release 下载 Peach Code 镜像的便携 Node.js runtime。
 4. 尝试 winget、Chocolatey、Scoop。
+
+如果 Claude/Codex 官方 PowerShell 安装器返回了网页 HTML 或执行失败，安装器会自动 fallback 到 npm 安装：
+
+```text
+@anthropic-ai/claude-code@latest
+@openai/codex@latest
+```
 
 内置 runtime 安装目录：
 

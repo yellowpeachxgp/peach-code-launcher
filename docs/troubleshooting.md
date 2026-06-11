@@ -1,5 +1,21 @@
 # Troubleshooting
 
+## Windows CMD Shows `'bash' Is Not Recognized`
+
+`curl ... install.sh | bash` is only for macOS, Linux, or WSL. Windows CMD does not include Bash by default.
+
+Use the CMD bootstrap command instead:
+
+```bat
+curl -fsSL -o "%TEMP%\peach-code-install.cmd" https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.cmd && "%TEMP%\peach-code-install.cmd"
+```
+
+Or use PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.ps1 | iex
+```
+
 ## `peach-code` Command Not Found
 
 Close and reopen the terminal.
@@ -58,6 +74,8 @@ PEACH_CODE_NO_BROWSER=1 peach-code auth
 ## Node.js Or npm Problems
 
 The installer checks for Node.js 18+ and npm before it runs any missing Claude/Codex official installer. If both `claude` and `codex` are already installed, it skips this preflight and only refreshes `peach-code` plus the Peach Code config.
+
+If a PowerShell installer downloads HTML instead of a script, the launcher detects that and falls back to npm for the missing CLI.
 
 If Node.js is missing, the installer first tries to download Peach Code's mirrored portable Node.js runtime from GitHub Releases. The runtime is installed under:
 

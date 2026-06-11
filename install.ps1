@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.5.1"
+$PeachCodeVersion = "0.5.2"
 $BrandName = "Peach Code"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
@@ -142,6 +142,47 @@ function Invoke-DownloadFile($Url, $OutFile) {
   }
 }
 
+function Test-InstallerLooksLikeHtml($Path) {
+  $head = (Get-Content -Path $Path -TotalCount 20 -ErrorAction SilentlyContinue) -join "`n"
+  return $head -match '<!doctype|<html|<script'
+}
+
+function Invoke-RemotePowerShellInstaller($Url) {
+  $tmp = Join-Path $env:TEMP "peach-code-remote-installer-$([Guid]::NewGuid()).ps1"
+
+  try {
+    Invoke-DownloadFile $Url $tmp
+    if (Test-InstallerLooksLikeHtml $tmp) {
+      Write-Warn "远程安装器返回了 HTML 页面而不是 PowerShell 脚本：$Url"
+      return $false
+    }
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File $tmp
+    if ($LASTEXITCODE -ne 0) {
+      Write-Warn "远程安装器退出码：$LASTEXITCODE"
+      return $false
+    }
+    return $true
+  } catch {
+    Write-Warn "$($_.Exception.Message)"
+    return $false
+  } finally {
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Install-NpmGlobalPackage($PackageName, $Label) {
+  if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    throw "npm is required for $Label fallback install."
+  }
+
+  Write-Info "正在通过 npm 安装 $Label..."
+  npm install -g $PackageName
+  if ($LASTEXITCODE -ne 0) {
+    throw "npm install failed for $PackageName with exit code $LASTEXITCODE"
+  }
+}
+
 function Install-NodeFromGithubRuntime {
   $asset = Get-NodeRuntimeAsset
   $expectedHash = Get-NodeRuntimeSha256 $asset
@@ -254,7 +295,7 @@ function Write-Manager {
   $managerContent = @'
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.5.1"
+$PeachCodeVersion = "0.5.2"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
 $SpeedEndpoint = "https://cli-speed.rhinelab.com.cn"
@@ -679,7 +720,10 @@ function Install-OfficialClis {
     Write-Info "已检测到 Claude Code CLI：$claudePath"
   } else {
     Write-Info "正在安装 Claude Code CLI..."
-    Invoke-Expression (Invoke-WebRequest -UseBasicParsing -Uri "https://claude.ai/install.ps1").Content
+    if (-not (Invoke-RemotePowerShellInstaller "https://claude.ai/install.ps1")) {
+      Write-Warn "Claude Code 原生安装器不可用，尝试 npm fallback。"
+      Install-NpmGlobalPackage "@anthropic-ai/claude-code@latest" "Claude Code CLI"
+    }
   }
 
   if (Test-CodexCliInstalled) {
@@ -688,7 +732,10 @@ function Install-OfficialClis {
   } else {
     Write-Info "正在安装 Codex CLI..."
     $env:CODEX_NON_INTERACTIVE = "1"
-    Invoke-Expression (Invoke-WebRequest -UseBasicParsing -Uri "https://chatgpt.com/codex/install.ps1").Content
+    if (-not (Invoke-RemotePowerShellInstaller "https://chatgpt.com/codex/install.ps1")) {
+      Write-Warn "Codex CLI 原生安装器不可用，尝试 npm fallback。"
+      Install-NpmGlobalPackage "@openai/codex@latest" "Codex CLI"
+    }
   }
 }
 

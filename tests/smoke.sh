@@ -32,28 +32,38 @@ assert_order() {
 
 bash -n install.sh
 
-assert_contains install.sh 'PEACH_CODE_VERSION="0.5.1"'
+assert_contains install.sh 'PEACH_CODE_VERSION="0.5.2"'
 assert_contains install.sh 'NODE_RUNTIME_VERSION="v24.16.0"'
 assert_contains install.sh 'install_node_from_github_runtime'
 assert_contains install.sh 'curl_download'
+assert_contains install.sh 'run_remote_shell_installer'
 assert_contains install.sh '6b144acbcfdbca75a1366100ff96e6bf6a4fe666b88a4bda7bfbd0299c82cca2'
 assert_contains install.sh 'ensure_node_runtime'
 assert_contains install.sh 'official_clis_installed'
 assert_contains install.sh 'setup_node_runtime_shell_path'
+assert_contains install.sh '@anthropic-ai/claude-code@latest'
+assert_contains install.sh '@openai/codex@latest'
 assert_contains install.sh 'PEACH_CODE_SKIP_NODE=1'
-assert_order install.sh 'ensure_node_runtime' 'curl -fsSL https://claude.ai/install.sh | bash'
+assert_order install.sh 'ensure_node_runtime' 'run_remote_shell_installer "https://claude.ai/install.sh" bash'
 assert_order install.sh 'install_node_from_github_runtime' 'install_node_with_package_manager'
 
-assert_contains install.ps1 '$PeachCodeVersion = "0.5.1"'
+assert_contains install.ps1 '$PeachCodeVersion = "0.5.2"'
 assert_contains install.ps1 '$NodeRuntimeVersion = "v24.16.0"'
 assert_contains install.ps1 'Install-NodeFromGithubRuntime'
 assert_contains install.ps1 'Invoke-DownloadFile'
+assert_contains install.ps1 'Test-InstallerLooksLikeHtml'
+assert_contains install.ps1 'Invoke-RemotePowerShellInstaller'
+assert_contains install.ps1 '@anthropic-ai/claude-code@latest'
+assert_contains install.ps1 '@openai/codex@latest'
 assert_contains install.ps1 'Ensure-NodeRuntime'
 assert_contains install.ps1 'Test-OfficialClisInstalled'
 assert_contains install.ps1 'Add-NodeRuntimeToUserPath'
 assert_contains install.ps1 'PEACH_CODE_SKIP_NODE'
-assert_order install.ps1 'Ensure-NodeRuntime' 'Invoke-WebRequest -UseBasicParsing -Uri "https://claude.ai/install.ps1"'
+assert_order install.ps1 'Ensure-NodeRuntime' 'Invoke-RemotePowerShellInstaller "https://claude.ai/install.ps1"'
 assert_order install.ps1 'Install-NodeFromGithubRuntime' 'Install-NodeRuntime'
+
+assert_contains install.cmd 'install.ps1'
+assert_contains install.cmd 'Invoke-RestMethod'
 
 assert_contains scripts/mirror-node-runtime.sh 'node-runtime-v24.16.0'
 assert_contains scripts/mirror-node-runtime.sh 'node-manifest.json'
@@ -80,7 +90,7 @@ HOME="$tmp_home" PATH="$cmd_dir:/usr/bin:/bin:/usr/sbin:/sbin" peach-code doctor
 HOME="$tmp_home" PATH="$cmd_dir:/usr/bin:/bin:/usr/sbin:/sbin" PEACH_CODE_NO_BROWSER=1 peach-code keys >/tmp/peach-code-smoke-keys.log 2>&1
 printf 'pc-smoke-key\n' | HOME="$tmp_home" PATH="$cmd_dir:/usr/bin:/bin:/usr/sbin:/sbin" PEACH_CODE_NO_BROWSER=1 peach-code auth >/tmp/peach-code-smoke-auth.log 2>&1
 
-assert_contains /tmp/peach-code-smoke-install.log 'Peach Code 安装器 0.5.1'
+assert_contains /tmp/peach-code-smoke-install.log 'Peach Code 安装器 0.5.2'
 assert_contains /tmp/peach-code-smoke-install.log 'DRY RUN: 跳过 Node.js/npm 前置依赖检查。'
 assert_contains /tmp/peach-code-smoke-doctor.log 'Claude config: ok'
 assert_contains /tmp/peach-code-smoke-doctor.log 'Codex config: ok'
@@ -121,6 +131,6 @@ if grep -Fq 'claude.ai/install.sh' /tmp/peach-code-smoke-existing-clis.log; then
   fail "existing CLI flow should skip Claude official installer"
 fi
 HOME="$installed_home" PATH="$installed_cmd_dir:$fake_bin:/usr/bin:/bin:/usr/sbin:/sbin" peach-code version >/tmp/peach-code-smoke-existing-version.log
-assert_contains /tmp/peach-code-smoke-existing-version.log '0.5.1'
+assert_contains /tmp/peach-code-smoke-existing-version.log '0.5.2'
 
 printf 'smoke ok\n'
