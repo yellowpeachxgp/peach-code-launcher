@@ -2,7 +2,7 @@
 
 Peach Code 一键安装器。用户复制一条命令后，安装器会自动安装或刷新全局 `peach-code` 管理菜单，写入 Peach Code 中转站配置，并在缺少 Claude Code CLI / Codex CLI 时自动补齐。
 
-当前安装器版本：`0.5.2`
+当前安装器版本：`0.5.3`
 
 ## 一键安装
 

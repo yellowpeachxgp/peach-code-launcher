@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.5.2"
+$PeachCodeVersion = "0.5.3"
 $BrandName = "Peach Code"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
@@ -295,7 +295,7 @@ function Write-Manager {
   $managerContent = @'
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.5.2"
+$PeachCodeVersion = "0.5.3"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
 $SpeedEndpoint = "https://cli-speed.rhinelab.com.cn"
@@ -556,7 +556,7 @@ function Invoke-PeachDoctor {
 
   foreach ($cmd in @("claude", "codex", "curl")) {
     $found = Get-Command $cmd -ErrorAction SilentlyContinue
-    if ($found) { Write-Host "$cmd: $($found.Source)" } else { Write-Host "${cmd}: missing" }
+    if ($found) { Write-Host "${cmd}: $($found.Source)" } else { Write-Host "${cmd}: missing" }
   }
 
   $claudeSettings = Join-Path $HOME ".claude\settings.json"
