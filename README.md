@@ -2,7 +2,7 @@
 
 Peach Code 一键安装器。用户复制一条命令后，安装器会自动安装或刷新全局 `peach-code` 管理菜单，写入 Peach Code 中转站配置，并在缺少 Claude Code CLI / Codex CLI 时自动补齐。
 
-当前安装器版本：`0.5.4`
+当前安装器版本：`0.5.5`
 
 ## 一键安装
 
@@ -15,13 +15,13 @@ curl -fsSL https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/
 Windows PowerShell：
 
 ```powershell
-irm https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.ps1 | iex
+irm "https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.ps1?v=0.5.5" | iex
 ```
 
 Windows CMD：
 
 ```bat
-curl -fsSL -o "%TEMP%\peach-code-install.cmd" https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.cmd && "%TEMP%\peach-code-install.cmd"
+curl -fsSL -o "%TEMP%\peach-code-install.cmd" "https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.cmd?v=0.5.5" && "%TEMP%\peach-code-install.cmd"
 ```
 
 注意：`curl ... install.sh | bash` 只适用于 macOS、Linux、WSL，不适用于 Windows CMD。如果在 CMD 里看到 `'bash' 不是内部或外部命令`，请改用上面的 Windows CMD 命令。
@@ -85,6 +85,30 @@ Windows：
 @anthropic-ai/claude-code@latest
 @openai/codex@latest
 ```
+
+## 自动日志和自检
+
+Windows 安装器会自动开启日志，并在安装结尾运行自检。自检会检查：
+
+- `peach-code` 管理命令是否写入并进入 PATH。
+- Claude/Codex 命令是否可执行。
+- Claude `settings.json` 和 Codex `config.toml` 是否写入 Peach Code provider。
+- endpoint、API Key helper、API Key 文件是否处于预期状态。
+- Node.js runtime 下载失败时的 URL、文件大小、SHA256、content-type 和文件开头预览。
+
+默认日志位置：
+
+```text
+~\.peach-code\logs\install-YYYYMMDD-HHMMSS.log
+```
+
+如果 CMD bootstrap 在进入安装器前就失败，还会在 `%TEMP%` 下生成：
+
+```text
+peach-code-bootstrap-YYYYMMDD-HHMMSS.log
+```
+
+安装失败时，把终端显示的日志路径对应文件发给支持即可；日志不会打印 API Key 内容。
 
 内置 runtime 安装目录：
 
@@ -171,6 +195,9 @@ macOS/Linux 下该文件权限会设置为 `600`。
 | `PEACH_CODE_COMMAND_DIR` | 指定 `peach-code` 命令 shim 的安装目录。 |
 | `PEACH_CODE_NO_BROWSER=1` | 不自动打开浏览器。适合 SSH、CI、无桌面环境。 |
 | `PEACH_CODE_NODE_RUNTIME_BASE_URL` | 指定 Node.js runtime 镜像资产的 URL 前缀。 |
+| `PEACH_CODE_LOG_DIR` | 指定 Windows 安装日志目录。 |
+| `PEACH_CODE_NO_LOG=1` | 关闭 Windows 安装器 transcript 日志。 |
+| `PEACH_CODE_VERBOSE_LOG=1` | 将诊断行同时输出到 terminal。 |
 | `PEACH_CODE_SKIP_NODE=1` | 跳过 Node.js/npm 前置检查。仅建议高级用户使用。 |
 | `PEACH_CODE_SKIP_AUTH=1` | 跳过 API Key 输入。稍后可运行 `peach-code auth`。 |
 | `PEACH_CODE_DRY_RUN=1` | 本地测试模式，跳过官方 CLI 安装器和最终 CLI 验证。 |

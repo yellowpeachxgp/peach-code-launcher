@@ -7,14 +7,32 @@
 Use the CMD bootstrap command instead:
 
 ```bat
-curl -fsSL -o "%TEMP%\peach-code-install.cmd" https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.cmd && "%TEMP%\peach-code-install.cmd"
+curl -fsSL -o "%TEMP%\peach-code-install.cmd" "https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.cmd?v=0.5.5" && "%TEMP%\peach-code-install.cmd"
 ```
 
 Or use PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.ps1 | iex
+irm "https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.ps1?v=0.5.5" | iex
 ```
+
+## Installer Logs
+
+Windows installer `0.5.5` and newer automatically writes a transcript log and runs a post-install self-check.
+
+Default installer log:
+
+```text
+~\.peach-code\logs\install-YYYYMMDD-HHMMSS.log
+```
+
+If CMD fails before the installer starts, the CMD bootstrap also prints a temporary bootstrap log path:
+
+```text
+%TEMP%\peach-code-bootstrap-YYYYMMDD-HHMMSS.log
+```
+
+Send the printed log file when reporting failures. The log includes environment diagnostics, command discovery, PATH snapshots, config checks, and Node runtime download details such as file size, expected/actual SHA256, content type, and first bytes preview. It does not print the API key.
 
 ## `peach-code` Command Not Found
 
@@ -79,18 +97,18 @@ If a PowerShell installer downloads HTML instead of a script, the launcher detec
 
 ## Claude Or Codex Is Installed But Still Detected As Missing
 
-Use installer `0.5.4` or newer. The Windows installer refreshes Machine/User PATH and checks `claude`, `claude.cmd`, `claude.exe`, npm global paths, and common `~/.claude` / `~/.codex` local install paths.
+Use installer `0.5.5` or newer. The Windows installer refreshes Machine/User PATH and checks `claude`, `claude.cmd`, `claude.exe`, npm global paths, and common `~/.claude` / `~/.codex` local install paths.
 
 Re-run the Windows command:
 
 ```powershell
-irm https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.ps1 | iex
+irm "https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.ps1?v=0.5.5" | iex
 ```
 
 Or from CMD:
 
 ```bat
-curl -fsSL -o "%TEMP%\peach-code-install.cmd" https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.cmd && "%TEMP%\peach-code-install.cmd"
+curl -fsSL -o "%TEMP%\peach-code-install.cmd" "https://raw.githubusercontent.com/yellowpeachxgp/peach-code-launcher/main/install.cmd?v=0.5.5" && "%TEMP%\peach-code-install.cmd"
 ```
 
 If Node.js is missing, the installer first tries to download Peach Code's mirrored portable Node.js runtime from GitHub Releases. The runtime is installed under:

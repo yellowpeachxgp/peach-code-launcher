@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.5.4"
+$PeachCodeVersion = "0.5.5"
 $BrandName = "Peach Code"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
@@ -18,10 +18,14 @@ $EndpointFile = Join-Path $StateDir "endpoint"
 $InstallUrlFile = Join-Path $StateDir "install_url"
 $RuntimeDir = Join-Path $StateDir "runtime"
 $NodeRuntimeDir = Join-Path $RuntimeDir "node"
+$LogDir = if ($env:PEACH_CODE_LOG_DIR) { $env:PEACH_CODE_LOG_DIR } else { Join-Path $StateDir "logs" }
 $Helper = Join-Path $BinDir "peach-api-key.ps1"
 $HelperCmd = Join-Path $BinDir "peach-api-key.cmd"
 $Manager = Join-Path $BinDir "peach-code.ps1"
 $ManagerCmd = Join-Path $BinDir "peach-code.cmd"
+
+$script:InstallLogFile = $null
+$script:InstallTranscriptStarted = $false
 
 function Write-Info($Message) {
   Write-Host "==> $Message" -ForegroundColor Blue
@@ -29,6 +33,78 @@ function Write-Info($Message) {
 
 function Write-Warn($Message) {
   Write-Host "WARN: $Message" -ForegroundColor Yellow
+}
+
+function Write-Diagnostic($Message) {
+  $line = "DIAG: $Message"
+  try {
+    if ($script:InstallLogFile) {
+      Add-Content -Encoding UTF8 -Path $script:InstallLogFile -Value "[$(Get-Date -Format o)] $line"
+    }
+  } catch {
+  }
+
+  if ($env:PEACH_CODE_VERBOSE_LOG -eq "1") {
+    Write-Host $line -ForegroundColor DarkGray
+  }
+}
+
+function Start-InstallerLog {
+  if ($env:PEACH_CODE_NO_LOG -eq "1") { return }
+
+  try {
+    New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+    $script:InstallLogFile = Join-Path $LogDir ("install-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+    Start-Transcript -Path $script:InstallLogFile -Append -Force | Out-Null
+    $script:InstallTranscriptStarted = $true
+    Write-Info "安装日志：$script:InstallLogFile"
+  } catch {
+    Write-Warn "无法启动安装日志：$($_.Exception.Message)"
+  }
+}
+
+function Stop-InstallerLog {
+  if (-not $script:InstallTranscriptStarted) { return }
+
+  try {
+    Stop-Transcript | Out-Null
+  } catch {
+  } finally {
+    $script:InstallTranscriptStarted = $false
+  }
+}
+
+function Get-CommandSource($Name) {
+  $found = Get-Command $Name -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($found) { return $found.Source }
+  return "missing"
+}
+
+function Write-InstallerEnvironmentDiagnostics($Phase) {
+  Write-Diagnostic "phase=$Phase"
+  Write-Diagnostic "installer.version=$PeachCodeVersion"
+  Write-Diagnostic "powershell.version=$($PSVersionTable.PSVersion)"
+  Write-Diagnostic "os=$([Runtime.InteropServices.RuntimeInformation]::OSDescription)"
+  Write-Diagnostic "os.arch=$([Runtime.InteropServices.RuntimeInformation]::OSArchitecture)"
+  Write-Diagnostic "process.arch=$([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)"
+  Write-Diagnostic "cwd=$(Get-Location)"
+  Write-Diagnostic "state.dir=$StateDir"
+  Write-Diagnostic "bin.dir=$BinDir"
+  Write-Diagnostic "runtime.dir=$NodeRuntimeDir"
+  Write-Diagnostic "install.url=$DefaultInstallUrl"
+  Write-Diagnostic "node.runtime.base.url=$NodeRuntimeBaseUrl"
+  Write-Diagnostic "path=$env:Path"
+
+  foreach ($cmd in @("powershell", "curl", "node", "npm", "claude", "codex", "peach-code")) {
+    Write-Diagnostic "command.$cmd=$(Get-CommandSource $cmd)"
+  }
+
+  try {
+    $npmPrefix = Get-NpmGlobalPrefix
+    if ($npmPrefix) { Write-Diagnostic "npm.global.prefix=$npmPrefix" }
+  } catch {
+    Write-Diagnostic "npm.global.prefix.error=$($_.Exception.Message)"
+  }
 }
 
 function Normalize-Endpoint($Endpoint) {
@@ -146,12 +222,84 @@ function Add-NodeRuntimeToPath {
 function Invoke-DownloadFile($Url, $OutFile) {
   for ($attempt = 1; $attempt -le 5; $attempt++) {
     try {
+      Write-Diagnostic "download.attempt=$attempt url=$Url out=$OutFile"
       Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $OutFile
       return
     } catch {
+      Write-Diagnostic "download.error.attempt=$attempt message=$($_.Exception.Message)"
       if ($attempt -eq 5) { throw }
       Start-Sleep -Seconds ([Math]::Min($attempt * 2, 10))
     }
+  }
+}
+
+function Get-FileHeadPreview($Path) {
+  if (-not (Test-Path $Path)) { return "missing" }
+
+  try {
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    $take = [Math]::Min($bytes.Length, 240)
+    if ($take -le 0) { return "empty" }
+
+    $head = New-Object byte[] $take
+    [Array]::Copy($bytes, 0, $head, 0, $take)
+    $hex = ($head | ForEach-Object { $_.ToString("x2") }) -join " "
+    $text = [Text.Encoding]::UTF8.GetString($head)
+    $text = ($text -replace '[^\u0020-\u007e]', '.').Trim()
+    return "hex=$hex text=$text"
+  } catch {
+    return "preview.error=$($_.Exception.Message)"
+  }
+}
+
+function Test-ZipFileSignature($Path) {
+  if (-not (Test-Path $Path)) { return $false }
+
+  try {
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+      if ($stream.Length -lt 4) { return $false }
+      $bytes = New-Object byte[] 4
+      [void]$stream.Read($bytes, 0, 4)
+      return ($bytes[0] -eq 0x50 -and $bytes[1] -eq 0x4b -and (
+        ($bytes[2] -eq 0x03 -and $bytes[3] -eq 0x04) -or
+        ($bytes[2] -eq 0x05 -and $bytes[3] -eq 0x06) -or
+        ($bytes[2] -eq 0x07 -and $bytes[3] -eq 0x08)
+      ))
+    } finally {
+      $stream.Dispose()
+    }
+  } catch {
+    Write-Diagnostic "zip.signature.error=$($_.Exception.Message)"
+    return $false
+  }
+}
+
+function Write-DownloadDiagnostics($Url, $Path, $ExpectedHash, $ActualHash) {
+  Write-Diagnostic "download.url=$Url"
+  Write-Diagnostic "download.path=$Path"
+
+  if (Test-Path $Path) {
+    $item = Get-Item $Path
+    Write-Diagnostic "download.size.bytes=$($item.Length)"
+    if ($ExpectedHash) { Write-Diagnostic "download.sha256.expected=$ExpectedHash" }
+    if ($ActualHash) { Write-Diagnostic "download.sha256.actual=$ActualHash" }
+    Write-Diagnostic "download.zip.signature.ok=$(Test-ZipFileSignature $Path)"
+    Write-Diagnostic "download.head.preview=$(Get-FileHeadPreview $Path)"
+  } else {
+    Write-Diagnostic "download.file=missing"
+  }
+
+  try {
+    $head = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $Url
+    Write-Diagnostic "download.http.status=$($head.StatusCode)"
+    Write-Diagnostic "download.http.content_type=$($head.Headers['Content-Type'])"
+    Write-Diagnostic "download.http.content_length=$($head.Headers['Content-Length'])"
+    if ($head.BaseResponse -and $head.BaseResponse.ResponseUri) {
+      Write-Diagnostic "download.http.final_url=$($head.BaseResponse.ResponseUri.AbsoluteUri)"
+    }
+  } catch {
+    Write-Diagnostic "download.http.head.error=$($_.Exception.Message)"
   }
 }
 
@@ -209,9 +357,17 @@ function Install-NodeFromGithubRuntime {
 
   $actualHash = (Get-FileHash -Algorithm SHA256 -Path $archive).Hash.ToLowerInvariant()
   if ($actualHash -ne $expectedHash) {
+    Write-DownloadDiagnostics $url $archive $expectedHash $actualHash
     Remove-Item $archive -Force -ErrorAction SilentlyContinue
     Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
-    throw "Node.js runtime 校验失败：$asset"
+    throw "Node.js runtime 校验失败：$asset。详细下载诊断已写入安装日志。"
+  }
+
+  if (-not (Test-ZipFileSignature $archive)) {
+    Write-DownloadDiagnostics $url $archive $expectedHash $actualHash
+    Remove-Item $archive -Force -ErrorAction SilentlyContinue
+    Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    throw "Node.js runtime 不是有效 ZIP 文件：$asset。详细下载诊断已写入安装日志。"
   }
 
   Expand-Archive -Path $archive -DestinationPath $extractDir -Force
@@ -399,7 +555,7 @@ function Write-Manager {
   $managerContent = @'
 $ErrorActionPreference = "Stop"
 
-$PeachCodeVersion = "0.5.4"
+$PeachCodeVersion = "0.5.5"
 $ProviderId = "peach"
 $PrimaryEndpoint = "https://cli.rhinelab.com.cn"
 $SpeedEndpoint = "https://cli-speed.rhinelab.com.cn"
@@ -865,6 +1021,121 @@ function Verify-Install {
   powershell -NoProfile -ExecutionPolicy Bypass -File $Manager verify
 }
 
+function Test-TextFileContains($Path, $Needle) {
+  try {
+    return (Test-Path $Path) -and ((Get-Content -Raw -Path $Path).Contains($Needle))
+  } catch {
+    Write-Diagnostic "file.contains.error path=$Path message=$($_.Exception.Message)"
+    return $false
+  }
+}
+
+function Add-SelfCheckFailure($Failures, $Message) {
+  [void]$Failures.Add($Message)
+  Write-Warn "自检失败：$Message"
+  Write-Diagnostic "selfcheck.fail=$Message"
+}
+
+function Test-CliVersionCommand($Name, $Failures) {
+  $path = if ($Name -eq "claude") { Get-ClaudeCliPath } else { Get-CodexCliPath }
+  if (-not $path) {
+    Add-SelfCheckFailure $Failures "未找到 $Name CLI。"
+    return
+  }
+
+  try {
+    $global:LASTEXITCODE = 0
+    $output = & $path --version 2>&1
+    $exitCode = $LASTEXITCODE
+    Write-Diagnostic "selfcheck.$Name.path=$path"
+    Write-Diagnostic "selfcheck.$Name.version.exit=$exitCode"
+    Write-Diagnostic "selfcheck.$Name.version.output=$($output -join ' | ')"
+    if ($exitCode -ne 0) {
+      Add-SelfCheckFailure $Failures "$Name --version 退出码为 $exitCode。"
+    }
+  } catch {
+    Add-SelfCheckFailure $Failures "$Name --version 执行失败：$($_.Exception.Message)"
+  }
+}
+
+function Invoke-InstallSelfCheck($Endpoint) {
+  Write-Info "正在运行安装自检..."
+  $failures = New-Object System.Collections.Generic.List[string]
+
+  if (-not (Test-Path $Manager)) {
+    Add-SelfCheckFailure $failures "缺少管理脚本：$Manager"
+  }
+  if (-not (Test-Path $ManagerCmd)) {
+    Add-SelfCheckFailure $failures "缺少 CMD 入口：$ManagerCmd"
+  }
+  if (-not (Test-Path $HelperCmd)) {
+    Add-SelfCheckFailure $failures "缺少 API Key helper：$HelperCmd"
+  }
+  if ((Get-CommandSource "peach-code") -eq "missing") {
+    Add-SelfCheckFailure $failures "当前终端找不到 peach-code 命令。"
+  }
+
+  if (-not (Test-TextFileContains $EndpointFile $Endpoint)) {
+    Add-SelfCheckFailure $failures "endpoint 文件未写入目标线路：$EndpointFile"
+  }
+
+  $claudeSettings = Join-Path $HOME ".claude\settings.json"
+  if (-not (Test-TextFileContains $claudeSettings "ANTHROPIC_BASE_URL")) {
+    Add-SelfCheckFailure $failures "Claude 配置缺少 ANTHROPIC_BASE_URL：$claudeSettings"
+  }
+  if (-not (Test-TextFileContains $claudeSettings $Endpoint)) {
+    Add-SelfCheckFailure $failures "Claude 配置未写入目标线路：$Endpoint"
+  }
+
+  $codexConfig = if ($env:CODEX_HOME) { Join-Path $env:CODEX_HOME "config.toml" } else { Join-Path $HOME ".codex\config.toml" }
+  if (-not (Test-TextFileContains $codexConfig "[model_providers.peach]")) {
+    Add-SelfCheckFailure $failures "Codex 配置缺少 Peach provider：$codexConfig"
+  }
+  if (-not (Test-TextFileContains $codexConfig ((Normalize-Endpoint $Endpoint) + "/v1"))) {
+    Add-SelfCheckFailure $failures "Codex 配置未写入目标 base_url：$Endpoint/v1"
+  }
+
+  if ($env:PEACH_CODE_SKIP_AUTH -eq "1") {
+    if (-not (Test-Path $ApiKeyFile)) {
+      Write-Warn "自检提醒：API Key 尚未写入，稍后请运行 peach-code auth。"
+      Write-Diagnostic "selfcheck.api_key=missing skipped_by_env"
+    }
+  } elseif (-not (Test-Path $ApiKeyFile)) {
+    Add-SelfCheckFailure $failures "API Key 文件不存在：$ApiKeyFile"
+  }
+
+  if ($env:PEACH_CODE_DRY_RUN -eq "1") {
+    Write-Diagnostic "selfcheck.cli.version=skipped dry_run"
+  } else {
+    Test-CliVersionCommand "claude" $failures
+    Test-CliVersionCommand "codex" $failures
+  }
+
+  Write-Diagnostic "selfcheck.node.available=$(Test-NodeRuntime)"
+  Write-InstallerEnvironmentDiagnostics "postcheck"
+
+  if ($failures.Count -gt 0) {
+    throw "安装自检未通过，共 $($failures.Count) 项失败。请把安装日志发给站长定位。"
+  }
+
+  Write-Info "安装自检通过。"
+}
+
+function Write-InstallFailureDiagnostics($ErrorRecord) {
+  Write-Warn "安装失败：$($ErrorRecord.Exception.Message)"
+  try {
+    Write-InstallerEnvironmentDiagnostics "failure"
+  } catch {
+    Write-Diagnostic "failure.diagnostics.error=$($_.Exception.Message)"
+  }
+
+  if ($script:InstallLogFile) {
+    Write-Host ""
+    Write-Host "安装日志已保存：$script:InstallLogFile"
+    Write-Host "请把这个日志文件发给 Peach Code 支持，用于准确定位失败原因。"
+  }
+}
+
 if ($args.Count -gt 0 -and ($args[0] -eq "--help" -or $args[0] -eq "-h")) {
   Write-Host @"
 Peach Code installer $PeachCodeVersion
@@ -875,6 +1146,9 @@ Environment overrides:
   PEACH_CODE_NO_BROWSER=1   Do not open the API key page automatically.
   PEACH_CODE_NODE_RUNTIME_BASE_URL
                             URL prefix for mirrored Node.js runtime assets.
+  PEACH_CODE_LOG_DIR        Directory for installer logs.
+  PEACH_CODE_NO_LOG=1       Disable installer transcript logging.
+  PEACH_CODE_VERBOSE_LOG=1  Print diagnostic lines to the terminal too.
   PEACH_CODE_SKIP_NODE=1    Skip Node.js/npm dependency checks.
   PEACH_CODE_SKIP_AUTH=1    Do not prompt for an API key.
   PEACH_CODE_DRY_RUN=1      Skip official CLI installers for local testing.
@@ -882,39 +1156,54 @@ Environment overrides:
   exit 0
 }
 
-$Endpoint = Normalize-Endpoint (Select-PeachEndpoint)
-Write-Info "Peach Code 安装器 $PeachCodeVersion"
-Write-Info "将使用端点：$Endpoint"
+Start-InstallerLog
 
-New-Item -ItemType Directory -Force -Path $StateDir, $BinDir | Out-Null
-$DefaultInstallUrl | Set-Content -Encoding ASCII -Path $InstallUrlFile
+try {
+  Write-InstallerEnvironmentDiagnostics "preflight"
 
-if (Test-OfficialClisInstalled) {
-  Write-Info "已检测到 Claude Code CLI 和 Codex CLI，仅安装/刷新 peach-code 管理脚本。"
-} else {
-  Ensure-NodeRuntime
-  Install-OfficialClis
+  $Endpoint = Normalize-Endpoint (Select-PeachEndpoint)
+  Write-Info "Peach Code 安装器 $PeachCodeVersion"
+  Write-Info "将使用端点：$Endpoint"
+
+  New-Item -ItemType Directory -Force -Path $StateDir, $BinDir | Out-Null
+  $DefaultInstallUrl | Set-Content -Encoding ASCII -Path $InstallUrlFile
+
+  if (Test-OfficialClisInstalled) {
+    Write-Info "已检测到 Claude Code CLI 和 Codex CLI，仅安装/刷新 peach-code 管理脚本。"
+  } else {
+    Ensure-NodeRuntime
+    Install-OfficialClis
+  }
+
+  Write-Manager
+  Add-BinToUserPath
+  Add-NodeRuntimeToUserPath
+
+  Write-Info "先写入 Peach Code 中转站配置..."
+  powershell -NoProfile -ExecutionPolicy Bypass -File $Manager configure --endpoint $Endpoint
+
+  Invoke-AuthIfNeeded
+  Verify-Install
+  Invoke-InstallSelfCheck $Endpoint
+
+  Write-Host ""
+  Write-Host "Peach Code 已配置完成。"
+  Write-Host ""
+  Write-Host "后续可直接在 terminal 运行："
+  Write-Host "  peach-code                   # 打开管理菜单"
+  Write-Host "  peach-code keys              # 打开 API Key 页面"
+  Write-Host "  peach-code auth              # 更新 API Key"
+  Write-Host "  peach-code endpoint          # 切换线路"
+  Write-Host "  peach-code doctor            # 检查安装状态"
+  Write-Host "  peach-code update            # 检测并获取新版本脚本"
+  Write-Host ""
+  Write-Host "如果当前终端暂时找不到 peach-code，请重新打开 PowerShell。"
+  if ($script:InstallLogFile) {
+    Write-Host "本次安装日志：$script:InstallLogFile"
+  }
+} catch {
+  Write-InstallFailureDiagnostics $_
+  exit 1
+} finally {
+  Stop-InstallerLog
 }
-
-Write-Manager
-Add-BinToUserPath
-Add-NodeRuntimeToUserPath
-
-Write-Info "先写入 Peach Code 中转站配置..."
-powershell -NoProfile -ExecutionPolicy Bypass -File $Manager configure --endpoint $Endpoint
-
-Invoke-AuthIfNeeded
-Verify-Install
-
-Write-Host ""
-Write-Host "Peach Code 已配置完成。"
-Write-Host ""
-Write-Host "后续可直接在 terminal 运行："
-Write-Host "  peach-code                   # 打开管理菜单"
-Write-Host "  peach-code keys              # 打开 API Key 页面"
-Write-Host "  peach-code auth              # 更新 API Key"
-Write-Host "  peach-code endpoint          # 切换线路"
-Write-Host "  peach-code doctor            # 检查安装状态"
-Write-Host "  peach-code update            # 检测并获取新版本脚本"
-Write-Host ""
-Write-Host "如果当前终端暂时找不到 peach-code，请重新打开 PowerShell。"

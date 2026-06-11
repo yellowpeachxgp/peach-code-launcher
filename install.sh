@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PEACH_CODE_VERSION="0.5.4"
+PEACH_CODE_VERSION="0.5.5"
 BRAND_NAME="Peach Code"
 PROVIDER_ID="peach"
 PRIMARY_ENDPOINT="https://cli.rhinelab.com.cn"
@@ -381,7 +381,7 @@ write_manager() {
 #!/usr/bin/env bash
 set -euo pipefail
 
-PEACH_CODE_VERSION="0.5.4"
+PEACH_CODE_VERSION="0.5.5"
 BRAND_NAME="Peach Code"
 PROVIDER_ID="peach"
 PRIMARY_ENDPOINT="https://cli.rhinelab.com.cn"
